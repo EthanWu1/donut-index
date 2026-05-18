@@ -17,8 +17,8 @@ module.exports = {
   cacheTtl: { stats: 60_000, lookup: 60_000, leaderboard: 300_000, auction: 60_000 },
   ratePerKeyPerMin: 250,
   snapshotIntervalMs: 3 * 60 * 60 * 1000,
-  // Verified in Task 4 against live data; minutes is the working assumption.
-  playtimeUnitSeconds: 60,
+  // DonutSMP /stats returns playtime in milliseconds; multiply to get seconds.
+  playtimeUnitSeconds: 0.001,
   embedColor: 0xe89b5a,
   brand: 'Donut Index',
 };

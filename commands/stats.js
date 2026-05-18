@@ -1,7 +1,8 @@
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const api = require('../lib/api');
 const db = require('../lib/db');
 const config = require('../config');
+const emojis = require('../lib/emojis');
 const { statsEmbed, errorEmbed } = require('../lib/embeds');
 
 // Resolves the target IGN from the interaction options / linked account.
@@ -20,21 +21,41 @@ function resolveIgn(interaction) {
 }
 
 async function buildStatsReply(ign) {
-  const [{ stats }, lookup] = await Promise.all([
-    api.getStats(ign),
-    api.getLookup(ign).catch(() => null),
-  ]);
+  const { stats } = await api.getStats(ign);
   db.trackPlayer(ign);
   db.addSnapshot(ign, stats);
 
+  // /lookup only succeeds for online players (HTTP 500 when offline),
+  // so a successful response is itself the "online" signal.
+  let online = false;
+  let location = null;
+  try {
+    const lookup = await api.getLookup(ign);
+    online = true;
+    location = lookup.location || lookup.world || lookup.server || lookup.area || null;
+  } catch {
+    online = false;
+  }
+
   const prevRow = db.snapshotBefore(ign, Date.now() - 24 * 3600_000);
   const prev = prevRow && prevRow.ts <= Date.now() - 60_000 ? prevRow : null;
-  const playtimeSeconds = stats.playtime * config.playtimeUnitSeconds;
+  const unit = config.playtimeUnitSeconds;
 
-  const embed = statsEmbed(ign, stats, prev, lookup, playtimeSeconds);
+  const embed = statsEmbed(ign, {
+    stats,
+    prev,
+    online,
+    location,
+    discordId: db.getDiscordIdByIgn(ign),
+    playtimeSec: stats.playtime * unit,
+    prevPlaytimeSec: prev ? prev.playtime * unit : null,
+  });
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`stats:history:${ign}:7d`).setLabel('Stats History').setStyle(ButtonStyle.Primary).setEmoji('📈'),
-    new ButtonBuilder().setCustomId(`stats:sells:${ign}:1`).setLabel('Auction Sells').setStyle(ButtonStyle.Secondary).setEmoji('💰'),
+    new ButtonBuilder()
+      .setCustomId(`stats:history:${ign}:7d`)
+      .setLabel('Stats History')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji(emojis.playtime),
   );
   return { embeds: [embed], components: [row] };
 }
@@ -66,24 +87,9 @@ module.exports = {
     }
   },
 
-  // Button handler — `stats:history:<ign>:<range>` and `stats:sells:<ign>:<page>`.
-  // The history chart is wired in Task 12; sells in this step.
+  // Button handler — `stats:history:<ign>:<range>`.
   async button(interaction) {
     const [, action, ign, arg] = interaction.customId.split(':');
-    if (action === 'sells') {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const page = Number(arg) || 1;
-      const txns = await api.getAuctionTransactions(page).catch(() => []);
-      const list = Array.isArray(txns) ? txns : txns.transactions || [];
-      const mine = list.filter((t) => (t.seller || '').toLowerCase() === ign.toLowerCase());
-      const { formatNumber } = require('../lib/format');
-      const lines = mine.map((t) => `**${t.item || t.name}** — \`${formatNumber(t.price)}\``);
-      return interaction.editReply({
-        content: mine.length
-          ? `**${ign}** — recent auction sells (page ${page}):\n${lines.join('\n')}`
-          : `No auction sells found for **${ign}** on page ${page}.`,
-      });
-    }
     if (action === 'history') {
       await interaction.deferUpdate();
       const ranges = { '24h': 86400_000, '7d': 7 * 86400_000, '30d': 30 * 86400_000, all: Infinity };

@@ -7,7 +7,7 @@ test('formatNumber abbreviates with K/M/B/T', () => {
   assert.strictEqual(fmt.formatNumber(5690), '5.69K');
   assert.strictEqual(fmt.formatNumber(1_760_000), '1.76M');
   assert.strictEqual(fmt.formatNumber(4_790_000_000), '4.79B');
-  assert.strictEqual(fmt.formatNumber(2_300_000_000_000), '2.3T');
+  assert.strictEqual(fmt.formatNumber(2_300_000_000_000), '2.30T');
   assert.strictEqual(fmt.formatNumber(-2_960_000_000), '-2.96B');
   assert.strictEqual(fmt.formatNumber(0), '0');
 });
