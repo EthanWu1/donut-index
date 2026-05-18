@@ -6,6 +6,7 @@ const { startSnapshotJob } = require('./jobs/snapshot');
 const { startAuctionJob } = require('./jobs/auction');
 const { startLeaderboardJob } = require('./jobs/leaderboard');
 const { startSchematicsJob } = require('./jobs/schematics');
+const { startPayJob } = require('./jobs/pay');
 
 if (!config.token) { console.error('BOT_TOKEN missing in .env'); process.exit(1); }
 
@@ -34,6 +35,7 @@ for (const file of fs.readdirSync(eventsDir).filter((f) => f.endsWith('.js'))) {
 client.once('clientReady', () => {
   startSnapshotJob();
   startSchematicsJob(client); // reads Discord, not the DonutSMP API — no contention
+  startPayJob(client); // resumes any /pay watches still open from before a restart
   // Leaderboards first (/rank), then the auction scan after a head start —
   // the auction listings scan is hundreds of pages and would otherwise
   // starve the leaderboard fetch of API rate-limit budget.

@@ -8,9 +8,9 @@ const { errorEmbed } = require('../lib/embeds');
 
 const TARGET = config.linkVerifyTarget;
 
-// Pending verifications keyed by Discord user id:
-// { ign, code, userBaseline, targetBaseline, expiresAt }
-const pending = new Map();
+// Pending verifications live in the `pending_links` table (lib/db.js) so an
+// in-progress verification survives a bot restart. Expired rows are swept by
+// the pay job; the button below also rejects them lazily.
 
 function checkRow() {
   return new ActionRowBuilder().addComponents(
@@ -66,15 +66,10 @@ module.exports = {
     }
 
     const code = Math.floor(1000 + Math.random() * 9000);
-    pending.set(interaction.user.id, {
+    db.setPendingLink(interaction.user.id, {
       ign, code, userBaseline, targetBaseline,
       expiresAt: Date.now() + config.linkVerifyTimeoutMs,
     });
-    const timer = setTimeout(() => {
-      const cur = pending.get(interaction.user.id);
-      if (cur && cur.code === code) pending.delete(interaction.user.id);
-    }, config.linkVerifyTimeoutMs);
-    if (timer.unref) timer.unref();
 
     return interaction.editReply({ embeds: [pendingEmbed(ign, code)], components: [checkRow()] });
   },
@@ -83,9 +78,9 @@ module.exports = {
   async button(interaction) {
     if (interaction.customId.split(':')[1] !== 'check') return;
 
-    const p = pending.get(interaction.user.id);
+    const p = db.getPendingLink(interaction.user.id);
     if (!p || Date.now() > p.expiresAt) {
-      pending.delete(interaction.user.id);
+      db.deletePendingLink(interaction.user.id);
       return interaction.update({
         embeds: [errorEmbed('This verification expired. Run `/link` again.')],
         components: [],
@@ -108,7 +103,7 @@ module.exports = {
     const deducted = p.userBaseline - userNow;
     const received = targetNow - p.targetBaseline;
     if (deducted === p.code && received === p.code) {
-      pending.delete(interaction.user.id);
+      db.deletePendingLink(interaction.user.id);
       db.setLink(interaction.user.id, p.ign);
       db.trackPlayer(p.ign);
       return interaction.editReply({

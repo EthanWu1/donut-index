@@ -52,4 +52,6 @@ module.exports = {
   // code amount to this account; the bot confirms it via balance deltas.
   linkVerifyTarget: process.env.LINK_VERIFY_TARGET || 'Vi2910NC',
   linkVerifyTimeoutMs: 15 * 60 * 1000,
+  // /pay watches the DonutSMP API for a payment to land, then confirms it.
+  payWatchTimeoutMs: 30 * 60 * 1000,
 };
