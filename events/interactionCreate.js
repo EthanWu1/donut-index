@@ -2,6 +2,18 @@ const { Events, MessageFlags } = require('discord.js');
 const { errorEmbed } = require('../lib/embeds');
 const db = require('../lib/db');
 
+// Logs an error and fully expands a Discord API rawError (e.g. the exact
+// component/field that failed validation), which console.error truncates.
+function logError(tag, err) {
+  console.error(tag, err);
+  if (err && err.rawError) {
+    console.error(`${tag} rawError:`, JSON.stringify(err.rawError, null, 2));
+  }
+  if (err && err.requestBody) {
+    console.error(`${tag} requestBody:`, JSON.stringify(err.requestBody, null, 2));
+  }
+}
+
 module.exports = {
   name: Events.InteractionCreate,
   async execute(interaction) {
@@ -18,7 +30,7 @@ module.exports = {
       try {
         await command.execute(interaction);
       } catch (err) {
-        console.error(`[command ${interaction.commandName}]`, err);
+        logError(`[command ${interaction.commandName}]`, err);
         const payload = { embeds: [errorEmbed(err.userMessage || 'Something went wrong.')], flags: MessageFlags.Ephemeral };
         if (interaction.deferred || interaction.replied) await interaction.editReply(payload).catch(() => {});
         else await interaction.reply(payload).catch(() => {});
@@ -40,7 +52,7 @@ module.exports = {
       if (command && command.selectMenu) {
         try { await command.selectMenu(interaction); }
         catch (err) {
-          console.error(`[select ${interaction.customId}]`, err);
+          logError(`[select ${interaction.customId}]`, err);
           await interaction.reply({ embeds: [errorEmbed('Menu action failed.')], flags: MessageFlags.Ephemeral }).catch(() => {});
         }
       }
@@ -53,7 +65,7 @@ module.exports = {
       if (command && command.button) {
         try { await command.button(interaction); }
         catch (err) {
-          console.error(`[button ${interaction.customId}]`, err);
+          logError(`[button ${interaction.customId}]`, err);
           await interaction.reply({ embeds: [errorEmbed('Button action failed.')], flags: MessageFlags.Ephemeral }).catch(() => {});
         }
       }
