@@ -1,7 +1,39 @@
-const { SlashCommandBuilder, MessageFlags } = require('discord.js');
+const {
+  SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags,
+} = require('discord.js');
 const api = require('../lib/api');
 const db = require('../lib/db');
+const config = require('../config');
 const { errorEmbed } = require('../lib/embeds');
+
+const TARGET = config.linkVerifyTarget;
+
+// Pending verifications keyed by Discord user id:
+// { ign, code, userBaseline, targetBaseline, expiresAt }
+const pending = new Map();
+
+function checkRow() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('link:check').setLabel('Check payment').setStyle(ButtonStyle.Success),
+  );
+}
+
+function pendingEmbed(ign, code, note) {
+  const lines = [
+    `### Verify ${ign}`,
+    '',
+    `To prove you own **${ign}**, pay this exact amount in-game:`,
+    '',
+    `> \`/pay ${TARGET} ${code}\``,
+    '',
+    `Send **exactly** \`$${code}\` to **${TARGET}**, then press **Check payment**.`,
+  ];
+  if (note) lines.push('', note);
+  return new EmbedBuilder()
+    .setColor(config.colors.leaderboard)
+    .setDescription(lines.join('\n'))
+    .setFooter({ text: 'This code expires in 15 minutes.' });
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -13,19 +45,84 @@ module.exports = {
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const ign = interaction.options.getString('username').trim();
-    // Validate via /stats — it works for offline players, unlike /lookup
-    // (DonutSMP's /lookup returns HTTP 500 for anyone not currently online).
-    // Only a confirmed 404 rejects the link; other API errors are tolerated.
+
+    // A live balance read both validates the IGN (404 -> rejected) and gives
+    // the baseline the payment check measures against.
+    let userBaseline;
     try {
-      await api.getStats(ign);
+      userBaseline = await api.getBalance(ign);
     } catch (err) {
       if (err instanceof api.NotFoundError) {
         return interaction.editReply({ embeds: [errorEmbed(`No DonutSMP player named \`${ign}\` was found.`)] });
       }
-      // API flaky or unreachable — link anyway rather than block the user.
+      return interaction.editReply({ embeds: [errorEmbed('Could not reach the DonutSMP API. Try again in a moment.')] });
     }
-    db.setLink(interaction.user.id, ign);
-    db.trackPlayer(ign);
-    return interaction.editReply({ content: `Linked to **${ign}**. \`/stats\` with no arguments now uses this account.` });
+
+    let targetBaseline;
+    try {
+      targetBaseline = await api.getBalance(TARGET);
+    } catch {
+      return interaction.editReply({ embeds: [errorEmbed('Could not reach the DonutSMP API. Try again in a moment.')] });
+    }
+
+    const code = Math.floor(1000 + Math.random() * 9000);
+    pending.set(interaction.user.id, {
+      ign, code, userBaseline, targetBaseline,
+      expiresAt: Date.now() + config.linkVerifyTimeoutMs,
+    });
+    const timer = setTimeout(() => {
+      const cur = pending.get(interaction.user.id);
+      if (cur && cur.code === code) pending.delete(interaction.user.id);
+    }, config.linkVerifyTimeoutMs);
+    if (timer.unref) timer.unref();
+
+    return interaction.editReply({ embeds: [pendingEmbed(ign, code)], components: [checkRow()] });
+  },
+
+  // Button: link:check — verifies the code payment moved between the accounts.
+  async button(interaction) {
+    if (interaction.customId.split(':')[1] !== 'check') return;
+
+    const p = pending.get(interaction.user.id);
+    if (!p || Date.now() > p.expiresAt) {
+      pending.delete(interaction.user.id);
+      return interaction.update({
+        embeds: [errorEmbed('This verification expired. Run `/link` again.')],
+        components: [],
+      });
+    }
+
+    await interaction.deferUpdate();
+    let userNow;
+    let targetNow;
+    try {
+      userNow = await api.getBalance(p.ign);
+      targetNow = await api.getBalance(TARGET);
+    } catch {
+      return interaction.editReply({
+        embeds: [pendingEmbed(p.ign, p.code, 'Could not reach the DonutSMP API. Try again in a moment.')],
+        components: [checkRow()],
+      });
+    }
+
+    const deducted = p.userBaseline - userNow;
+    const received = targetNow - p.targetBaseline;
+    if (deducted === p.code && received === p.code) {
+      pending.delete(interaction.user.id);
+      db.setLink(interaction.user.id, p.ign);
+      db.trackPlayer(p.ign);
+      return interaction.editReply({
+        embeds: [new EmbedBuilder()
+          .setColor(config.colors.online)
+          .setDescription(`### Linked to ${p.ign}\n\nOwnership verified by payment. \`/stats\` with no arguments now uses this account.`)],
+        components: [],
+      });
+    }
+
+    return interaction.editReply({
+      embeds: [pendingEmbed(p.ign, p.code,
+        `Payment of \`$${p.code}\` not detected yet. Pay **exactly** \`${p.code}\` to **${TARGET}**, then check again.`)],
+      components: [checkRow()],
+    });
   },
 };

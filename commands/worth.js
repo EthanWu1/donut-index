@@ -69,7 +69,7 @@ module.exports = {
     if (matches.length === 1) {
       const k = matches[0];
       const ic = itemEmoji(k);
-      desc = `### ${ic ? `${ic} ` : ''}${titleCase(k)}\nWorth **$${formatNumber(prices[k])}** at 1x.`;
+      desc = `### ${ic ? `${ic} ` : ''}${titleCase(k)}\n\nWorth **$${formatNumber(prices[k])}** at 1x.`;
     } else {
       const shown = matches.slice(0, MAX_LIST);
       const lines = shown.map((k) => {

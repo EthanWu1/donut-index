@@ -2,7 +2,8 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 
 const LINES = [
   '### Donut Index',
-  '_DonutSMP stats, leaderboards, and live auction data._',
+  '',
+  '_DonutSMP stats, leaderboards, live auction data, and build tools._',
   '',
   '**Player**',
   '`/stats`  ·  player stats with 24h changes and a history chart',
@@ -15,6 +16,11 @@ const LINES = [
   '`/ah`  ·  browse or search the auction house',
   '`/price`  ·  average real sold price of an item',
   '`/worth`  ·  shop sell value of an item',
+  '',
+  '**Build & Schematics**',
+  '`/schematics`  ·  browse the schematic library',
+  '`/render`  ·  render a `.litematic` file to an image',
+  '`/spawner`  ·  spawner farm production calculator',
 ].join('\n');
 
 module.exports = {

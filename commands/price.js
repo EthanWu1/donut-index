@@ -3,7 +3,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { getAuctionIndex } = require('../jobs/auction');
 const { itemEmoji } = require('../lib/itemEmojis');
-const { errorEmbed } = require('../lib/embeds');
+const { errorEmbed, emojiUrl } = require('../lib/embeds');
 const { formatNumber, relativeTime } = require('../lib/format');
 const config = require('../config');
 
@@ -58,20 +58,17 @@ module.exports = {
 
     const units = sales.map((s) => s.unit).sort((a, b) => a - b);
     const avg = Math.round(units.reduce((s, v) => s + v, 0) / units.length);
-    const median = Math.round(units[Math.floor(units.length / 2)]);
     const min = Math.round(units[0]);
     const max = Math.round(units[units.length - 1]);
     const cheapest = live.length
       ? Math.round(Math.min(...live.map((l) => l.price / Math.max(1, l.amount)))) : null;
 
     const book = loadPrices()[label.toLowerCase().replace(/\s+/g, '_')];
-    const ic = itemEmoji(sales[0].key);
 
     const lines = [
-      `### ${ic ? `${ic} ` : ''}${label} — Market Price`,
+      `### ${label}`,
       '',
       `Average sold: **$${formatNumber(avg)}** per item`,
-      `Median sold: \`$${formatNumber(median)}\``,
       `Range: \`$${formatNumber(min)}\` to \`$${formatNumber(max)}\``,
       `Based on **${sales.length}** recent sale${sales.length === 1 ? '' : 's'}`,
     ];
@@ -83,6 +80,8 @@ module.exports = {
       .setDescription(lines.join('\n'))
       .setFooter({ text: `Auction data updated ${relativeTime(updatedAt)}` })
       .setTimestamp();
+    const iconUrl = emojiUrl(itemEmoji(sales[0].key));
+    if (iconUrl) embed.setThumbnail(iconUrl);
     return interaction.reply({ embeds: [embed] });
   },
 };

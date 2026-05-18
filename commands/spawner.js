@@ -12,7 +12,7 @@ function baseRate(x) {
 }
 
 const STACK_SIZE = 750;
-const STEPS = [-10000, -1000, 1000, 10000];
+const STEPS = [-100, -10, 10, 100];
 const MIN = 1;
 const MAX = 1000000;
 
@@ -50,7 +50,7 @@ function view(type, countRaw) {
   const gain = pileBase > 0 ? splitBase / pileBase : 1;
 
   const titleEmoji = itemEmoji(`${t}_spawn_egg`) || itemEmoji(sp.drops[0].key) || '';
-  const lines = [`### ${titleEmoji} ${sp.label} Spawner Production`, `**${num(x)}** spawners`, ''];
+  const lines = [`### ${titleEmoji} ${sp.label} Spawner Production`, '', `**${num(x)}** spawners`, ''];
   for (const d of sp.drops) {
     const ic = itemEmoji(d.key);
     const perMin = splitBase * d.mult;
@@ -80,7 +80,7 @@ function view(type, countRaw) {
         .setStyle(ButtonStyle.Secondary)),
     new ButtonBuilder()
       .setCustomId(`spawner:s:${t}:${x}`)
-      .setEmoji('⚙️')
+      .setLabel('Set')
       .setStyle(ButtonStyle.Primary),
   );
   return { embeds: [embed], components: [typeRow, stepRow] };

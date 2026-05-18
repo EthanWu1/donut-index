@@ -5,10 +5,16 @@ const config = require('./config');
 const { startSnapshotJob } = require('./jobs/snapshot');
 const { startAuctionJob } = require('./jobs/auction');
 const { startLeaderboardJob } = require('./jobs/leaderboard');
+const { startSchematicsJob } = require('./jobs/schematics');
 
 if (!config.token) { console.error('BOT_TOKEN missing in .env'); process.exit(1); }
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+// MessageContent is required so the schematics job can read the .litematic
+// attachment (and body) on donutbot-authored forum posts — without it Discord
+// strips attachments/content from messages this bot did not author.
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.MessageContent],
+});
 client.commands = new Collection();
 
 const commandsDir = path.join(__dirname, 'commands');
@@ -27,7 +33,11 @@ for (const file of fs.readdirSync(eventsDir).filter((f) => f.endsWith('.js'))) {
 
 client.once('clientReady', () => {
   startSnapshotJob();
-  startAuctionJob();
+  startSchematicsJob(client); // reads Discord, not the DonutSMP API — no contention
+  // Leaderboards first (/rank), then the auction scan after a head start —
+  // the auction listings scan is hundreds of pages and would otherwise
+  // starve the leaderboard fetch of API rate-limit budget.
   startLeaderboardJob();
+  setTimeout(startAuctionJob, 90_000);
 });
 client.login(config.token);

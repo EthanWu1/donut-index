@@ -90,7 +90,7 @@ async function buildStatsReply(ign) {
       .setCustomId(`stats:history:${ign}`)
       .setLabel('Stats History')
       .setStyle(ButtonStyle.Secondary)
-      .setEmoji('🕒'),
+      .setEmoji({ id: '1505904916286279760', name: 'moving_clock', animated: true }),
   );
   return { embeds: [embed], components: [row], files: [] };
 }

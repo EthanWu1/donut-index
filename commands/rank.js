@@ -45,21 +45,20 @@ module.exports = {
     }
 
     const low = ign.toLowerCase();
-    let ranked = 0;
-    const lines = ORDER.map((type) => {
+    const lines = [];
+    for (const type of ORDER) {
       const idx = (boards[type] || []).indexOf(low);
-      const emoji = LB_EMOJI[type] || '';
       if (idx >= 0) {
-        ranked += 1;
-        return `${emoji} **${TITLES[type]}:** #${idx + 1}`;
+        lines.push(`${LB_EMOJI[type] || ''} **${TITLES[type]}:** #${idx + 1}`);
       }
-      return `${emoji} **${TITLES[type]}:** unranked`;
-    });
+    }
+    const ranked = lines.length;
+    const body = ranked ? lines.join('\n') : '_Not ranked on any leaderboard._';
 
     const embed = new EmbedBuilder()
       .setColor(config.colors.leaderboard)
       .setThumbnail(`https://mc-heads.net/avatar/${encodeURIComponent(ign)}/100`)
-      .setDescription(`### ${ign}'s Leaderboard Ranks\n\n${lines.join('\n')}`)
+      .setDescription(`### ${ign}'s Leaderboard Ranks\n\n${body}`)
       .setFooter({ text: `Ranked on ${ranked}/${ORDER.length} leaderboards` })
       .setTimestamp();
     return interaction.reply({ embeds: [embed] });

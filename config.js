@@ -27,15 +27,25 @@ module.exports = {
     auction: 0x4aa3df,
     worth: 0x3ba55d,
     history: 0x1abc9c,
+    schematic: 0x5865f2,
     error: 0xe04347,
   },
   // Auction house indexing: the whole AH is scanned into memory on a timer.
-  ahMaxPages: 1000,
-  ahRefreshMs: 6 * 60 * 1000,
-  // Recent sold-auction pages indexed for /price (market average).
-  ahTxnPages: 60,
+  // ~400 real pages; 600 caps the runaway case without truncating real data.
+  ahMaxPages: 600,
+  ahRefreshMs: 20 * 60 * 1000,
+  // Recent sold-auction pages indexed for /price (the API caps this at 10).
+  ahTxnPages: 10,
   // Leaderboard indexing for /rank.
   lbMaxPages: 20,
   lbRefreshMs: 15 * 60 * 1000,
+  // Schematic index: Donut Index reads donutbot's schematic forum channel.
+  // Only forum threads with at least one tag applied are listed.
+  schematicForumChannelId: process.env.SCHEMATIC_FORUM_CHANNEL_ID || '1504844039546208386',
+  schematicsRefreshMs: 15 * 60 * 1000,
   brand: 'Donut Index',
+  // /link ownership check: the user proves they own an IGN by paying a random
+  // code amount to this account; the bot confirms it via balance deltas.
+  linkVerifyTarget: process.env.LINK_VERIFY_TARGET || 'Vi2910NC',
+  linkVerifyTimeoutMs: 15 * 60 * 1000,
 };

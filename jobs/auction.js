@@ -78,21 +78,9 @@ async function rebuild() {
   if (building) return;
   building = true;
   try {
-    const live = [];
-    for (let p = 1; p <= config.ahMaxPages; p++) {
-      let raw;
-      try {
-        raw = await api.getAuctionList(p);
-      } catch (e) {
-        console.warn(`[auction] list page ${p}: ${e.message}`);
-        break;
-      }
-      const list = extractList(raw);
-      if (!Array.isArray(list) || list.length === 0) break;
-      for (const it of list) live.push(normalizeListing(it));
-      await sleep(300);
-    }
-
+    // Transactions first: only a few pages, and /price depends on it. The
+    // listings scan below is hundreds of pages and would otherwise drain the
+    // shared API rate-limit budget before the transactions fetch ever runs.
     const sold = [];
     for (let p = 1; p <= config.ahTxnPages; p++) {
       let raw;
@@ -104,7 +92,28 @@ async function rebuild() {
       }
       const list = extractList(raw);
       if (!Array.isArray(list) || list.length === 0) break;
-      for (const t of list) sold.push(normalizeTxn(t));
+      for (const t of list) {
+        if (t && typeof t === 'object') sold.push(normalizeTxn(t));
+      }
+      await sleep(300);
+    }
+
+    const live = [];
+    for (let p = 1; p <= config.ahMaxPages; p++) {
+      let raw;
+      try {
+        raw = await api.getAuctionList(p);
+      } catch (e) {
+        console.warn(`[auction] list page ${p}: ${e.message}`);
+        break;
+      }
+      const list = extractList(raw);
+      if (!Array.isArray(list) || list.length === 0) break;
+      // The API occasionally returns null entries — skip them so one bad row
+      // cannot throw and abort the entire index build.
+      for (const it of list) {
+        if (it && typeof it === 'object') live.push(normalizeListing(it));
+      }
       await sleep(300);
     }
 

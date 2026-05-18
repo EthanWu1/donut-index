@@ -15,6 +15,13 @@ const { REST, Routes } = require('discord.js');
 const TOKEN = process.env.BOT_TOKEN;
 const APP_ID = process.env.CLIENT_ID;
 const MAX_EMOJIS = 2000;
+
+// Discord hard-throttles application-emoji create/delete once a fast
+// burst trips its anti-abuse system, and the penalty escalates the more
+// you hammer it. A steady pause between every op keeps the sustained
+// rate under that radar. Override with EMOJI_DELAY_MS if needed.
+const DELAY_MS = Number(process.env.EMOJI_DELAY_MS) || 2500;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ITEMS_DIR = path.join(__dirname, '..', 'assets', 'items');
 const MAP_PATH = path.join(__dirname, '..', 'data', 'item-emojis.json');
 const STATE_PATH = path.join(__dirname, '..', 'data', '.emoji-state.json');
@@ -76,11 +83,13 @@ async function main() {
   const rest = new REST({ version: '10' }).setToken(TOKEN);
   const state = loadState();
 
-  let existingRes = await rest.get(Routes.applicationEmojis(APP_ID));
+  const existingRes = await rest.get(Routes.applicationEmojis(APP_ID));
   const existing = existingRes.items || existingRes || [];
   const ourIds = new Set(Object.values(state.uploaded).map((v) => v.id));
 
-  // Delete emojis that are not part of the current target set.
+  // Delete emojis that are not part of the current target set. A full
+  // delete is intentional: the new icon set changes textures, so old
+  // emojis cannot be reused even when the item name matches.
   const junk = existing.filter((e) => !ourIds.has(e.id));
   if (junk.length) {
     console.log(`Deleting ${junk.length} old emojis...`);
@@ -95,6 +104,7 @@ async function main() {
         if (err.code !== 10014) console.warn(`  delete ${e.name}: ${err.message}`);
         else del += 1;
       }
+      await sleep(DELAY_MS);
     }
     console.log(`Deleted ${del} old emojis.`);
   }
@@ -135,6 +145,7 @@ async function main() {
       }
     }
     if (!done) console.warn(`  skip ${key}: all formats failed`);
+    await sleep(DELAY_MS);
   }
 
   saveState(state);
