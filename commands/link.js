@@ -26,6 +26,6 @@ module.exports = {
     }
     db.setLink(interaction.user.id, ign);
     db.trackPlayer(ign);
-    return interaction.editReply({ content: `✅ Linked to **${ign}**. \`/stats\` with no arguments now uses this account.` });
+    return interaction.editReply({ content: `Linked to **${ign}**. \`/stats\` with no arguments now uses this account.` });
   },
 };

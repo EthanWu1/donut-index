@@ -29,7 +29,8 @@ module.exports = {
     history: 0x1abc9c,
     error: 0xe04347,
   },
-  // How many auction pages to scan when a search term is given.
-  ahSearchPages: 20,
+  // Auction house indexing: the whole AH is scanned into memory on a timer.
+  ahMaxPages: 1000,
+  ahRefreshMs: 6 * 60 * 1000,
   brand: 'Donut Index',
 };

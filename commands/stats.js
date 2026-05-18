@@ -101,8 +101,7 @@ function buildHistoryView(ign, statKey, range) {
     ts: r.ts,
     value: isPlaytime ? (r.playtime * config.playtimeUnitSeconds) / 3600 : r[stat.key],
   }));
-  const title = `${ign} · ${stat.label}${isPlaytime ? ' (hours)' : ''}`;
-  const png = renderChart(points, { title });
+  const png = renderChart(points);
   const file = new AttachmentBuilder(png, { name: 'history.png' });
   const embed = historyEmbed(ign, stat.label, rangeDef.label);
 

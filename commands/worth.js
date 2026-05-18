@@ -2,11 +2,11 @@ const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js'
 const path = require('node:path');
 const fs = require('node:fs');
 const { formatNumber } = require('../lib/format');
-const { errorEmbed } = require('../lib/embeds');
+const { errorEmbed, WIDE } = require('../lib/embeds');
 const config = require('../config');
-const e = require('../lib/emojis');
 
 const PRICES_PATH = path.join(__dirname, '..', 'data', 'prices.json');
+const MAX_LIST = 40;
 
 function loadPrices() {
   try { return JSON.parse(fs.readFileSync(PRICES_PATH, 'utf8')); }
@@ -19,21 +19,18 @@ function titleCase(key) {
     (i > 0 && SMALL.has(w)) ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
-// Resolve a user's text to a price key: exact match, then word-subset fuzzy.
-function resolve(prices, input) {
+// Every price key whose words all contain one of the input words.
+function findMatches(prices, input) {
   const norm = input.trim().toLowerCase();
-  const exact = norm.replace(/\s+/g, '_');
-  if (prices[exact] !== undefined) return { key: exact };
-
   const words = norm.split(/\s+/).filter(Boolean);
-  const matches = Object.keys(prices).filter((k) => {
+  let matches = Object.keys(prices).filter((k) => {
     const kw = k.split('_');
     return words.every((w) => kw.some((x) => x.includes(w)));
   });
-  if (matches.length === 0) return { none: true };
-  if (matches.length === 1) return { key: matches[0] };
-  matches.sort((a, b) => a.length - b.length);
-  return { key: matches[0], also: matches.slice(1, 6) };
+  const exact = norm.replace(/\s+/g, '_');
+  matches = matches.filter((m) => m !== exact).sort();
+  if (prices[exact] !== undefined) matches.unshift(exact);
+  return matches;
 }
 
 module.exports = {
@@ -51,21 +48,30 @@ module.exports = {
       });
     }
     const input = interaction.options.getString('item');
-    const r = resolve(prices, input);
-    if (r.none) {
+    const matches = findMatches(prices, input);
+    if (matches.length === 0) {
       return interaction.reply({
         embeds: [errorEmbed(`No price on record for **${input}**.`)],
         flags: MessageFlags.Ephemeral,
       });
     }
-    const name = titleCase(r.key);
-    const price = prices[r.key];
+
+    let desc;
+    if (matches.length === 1) {
+      const k = matches[0];
+      desc = `One **${titleCase(k)}** is worth **$${formatNumber(prices[k])}** at 1x.`;
+    } else {
+      const shown = matches.slice(0, MAX_LIST);
+      const lines = shown.map((k) => `**${titleCase(k)}** \`$${formatNumber(prices[k])}\``);
+      desc = `### Worth: "${input}"\n\n${lines.join('\n')}`;
+      if (matches.length > MAX_LIST) {
+        desc += `\n\n_...and ${matches.length - MAX_LIST} more. Try a more specific term._`;
+      }
+    }
+
     const embed = new EmbedBuilder()
       .setColor(config.colors.worth)
-      .setDescription(`${e.gold_nugget} One **${name}** is worth **$${formatNumber(price)}** at 1x.`);
-    if (r.also && r.also.length) {
-      embed.setFooter({ text: `Also matched: ${r.also.map(titleCase).join(', ')}` });
-    }
+      .setDescription(`${desc}\n${WIDE}`);
     return interaction.reply({ embeds: [embed] });
   },
 };

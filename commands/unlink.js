@@ -12,6 +12,6 @@ module.exports = {
       return interaction.reply({ content: 'You have no linked account.', flags: MessageFlags.Ephemeral });
     }
     db.deleteLink(interaction.user.id);
-    return interaction.reply({ content: `✅ Unlinked from **${current}**.`, flags: MessageFlags.Ephemeral });
+    return interaction.reply({ content: `Unlinked from **${current}**.`, flags: MessageFlags.Ephemeral });
   },
 };
