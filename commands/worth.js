@@ -3,6 +3,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { formatNumber } = require('../lib/format');
 const { errorEmbed, WIDE } = require('../lib/embeds');
+const { itemEmoji } = require('../lib/itemEmojis');
 const config = require('../config');
 
 const PRICES_PATH = path.join(__dirname, '..', 'data', 'prices.json');
@@ -59,10 +60,14 @@ module.exports = {
     let desc;
     if (matches.length === 1) {
       const k = matches[0];
-      desc = `One **${titleCase(k)}** is worth **$${formatNumber(prices[k])}** at 1x.`;
+      const ic = itemEmoji(k);
+      desc = `One ${ic ? `${ic} ` : ''}**${titleCase(k)}** is worth **$${formatNumber(prices[k])}** at 1x.`;
     } else {
       const shown = matches.slice(0, MAX_LIST);
-      const lines = shown.map((k) => `**${titleCase(k)}** \`$${formatNumber(prices[k])}\``);
+      const lines = shown.map((k) => {
+        const ic = itemEmoji(k);
+        return `${ic ? `${ic} ` : ''}**${titleCase(k)}** \`$${formatNumber(prices[k])}\``;
+      });
       desc = `### Worth: "${input}"\n\n${lines.join('\n')}`;
       if (matches.length > MAX_LIST) {
         desc += `\n\n_...and ${matches.length - MAX_LIST} more. Try a more specific term._`;
