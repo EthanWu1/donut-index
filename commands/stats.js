@@ -1,9 +1,33 @@
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const {
+  SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
+  StringSelectMenuBuilder, AttachmentBuilder,
+} = require('discord.js');
 const api = require('../lib/api');
 const db = require('../lib/db');
 const config = require('../config');
 const emojis = require('../lib/emojis');
-const { statsEmbed, errorEmbed } = require('../lib/embeds');
+const { statsEmbed, historyEmbed, errorEmbed } = require('../lib/embeds');
+const { renderChart } = require('../lib/chart');
+
+// Chartable stats — key matches both the snapshot column and the API field.
+const STATS = [
+  { key: 'money', label: 'Balance' },
+  { key: 'shards', label: 'Shards' },
+  { key: 'kills', label: 'Kills' },
+  { key: 'deaths', label: 'Deaths' },
+  { key: 'playtime', label: 'Playtime' },
+  { key: 'placed', label: 'Blocks Placed' },
+  { key: 'broken', label: 'Blocks Broken' },
+  { key: 'mobs', label: 'Mobs Killed' },
+  { key: 'spent', label: 'Money Spent' },
+  { key: 'made', label: 'Money Made' },
+];
+const RANGES = {
+  '24h': { ms: 86400_000, label: 'Last 24 hours' },
+  '7d': { ms: 7 * 86400_000, label: 'Last 7 days' },
+  '30d': { ms: 30 * 86400_000, label: 'Last 30 days' },
+  all: { ms: Infinity, label: 'All Time' },
+};
 
 // Resolves the target IGN from the interaction options / linked account.
 function resolveIgn(interaction) {
@@ -52,12 +76,56 @@ async function buildStatsReply(ign) {
   });
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`stats:history:${ign}:7d`)
+      .setCustomId(`stats:history:${ign}`)
       .setLabel('Stats History')
       .setStyle(ButtonStyle.Secondary)
-      .setEmoji(emojis.playtime),
+      .setEmoji(emojis.clock_moving),
   );
-  return { embeds: [embed], components: [row] };
+  return { embeds: [embed], components: [row], files: [] };
+}
+
+// Builds the Stats History view: chart image + stat selector + range + controls.
+function buildHistoryView(ign, statKey, range, scale) {
+  const stat = STATS.find((s) => s.key === statKey) || STATS[0];
+  const rangeDef = RANGES[range] || RANGES['7d'];
+  const since = rangeDef.ms === Infinity ? 0 : Date.now() - rangeDef.ms;
+  const rows = db.snapshotsSince(ign, since);
+  const isPlaytime = stat.key === 'playtime';
+
+  const points = rows.map((r) => ({
+    ts: r.ts,
+    value: isPlaytime ? (r.playtime * config.playtimeUnitSeconds) / 3600 : r[stat.key],
+  }));
+  const title = `${ign} — ${stat.label}${isPlaytime ? ' (hours)' : ''}`;
+  const png = renderChart(points, { title, startAtZero: scale });
+  const file = new AttachmentBuilder(png, { name: 'history.png' });
+  const embed = historyEmbed(ign, stat.label, rangeDef.label);
+
+  const s = scale ? 1 : 0;
+  const selectRow = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`stats:hstat:${ign}:${range}:${s}`)
+      .setPlaceholder('Select a stat to chart')
+      .addOptions(STATS.map((o) => ({ label: o.label, value: o.key, default: o.key === stat.key }))),
+  );
+  const rangeRow = new ActionRowBuilder().addComponents(
+    ...Object.keys(RANGES).map((r) =>
+      new ButtonBuilder()
+        .setCustomId(`stats:hrange:${ign}:${stat.key}:${s}:${r}`)
+        .setLabel(r === 'all' ? 'All Time' : r)
+        .setStyle(r === range ? ButtonStyle.Primary : ButtonStyle.Secondary)),
+  );
+  const ctrlRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`stats:hscale:${ign}:${stat.key}:${range}:${s}`)
+      .setLabel(scale ? 'Scale: Start at 0' : 'Scale: Auto')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`stats:hback:${ign}`)
+      .setLabel('Back to Stats')
+      .setStyle(ButtonStyle.Danger),
+  );
+  return { embeds: [embed], files: [file], components: [selectRow, rangeRow, ctrlRow] };
 }
 
 module.exports = {
@@ -74,8 +142,7 @@ module.exports = {
       return interaction.editReply({ embeds: [errorEmbed(resolved.error)] });
     }
     try {
-      const reply = await buildStatsReply(resolved);
-      return interaction.editReply(reply);
+      return interaction.editReply(await buildStatsReply(resolved));
     } catch (err) {
       if (err instanceof api.NotFoundError) {
         return interaction.editReply({ embeds: [errorEmbed(`No DonutSMP player named \`${resolved}\` was found.`)] });
@@ -87,31 +154,35 @@ module.exports = {
     }
   },
 
-  // Button handler — `stats:history:<ign>:<range>`.
+  // Buttons: stats:history:<ign> | stats:hrange:<ign>:<stat>:<scale>:<range>
+  //          stats:hscale:<ign>:<stat>:<range>:<scale> | stats:hback:<ign>
   async button(interaction) {
-    const [, action, ign, arg] = interaction.customId.split(':');
-    if (action === 'history') {
-      await interaction.deferUpdate();
-      const ranges = { '24h': 86400_000, '7d': 7 * 86400_000, '30d': 30 * 86400_000, all: Infinity };
-      const range = ranges[arg] !== undefined ? arg : '7d';
-      const since = range === 'all' ? 0 : Date.now() - ranges[range];
-      const rows = db.snapshotsSince(ign, since);
-      const points = rows.map((r) => ({ ts: r.ts, value: r.money }));
-      const { renderBalanceChart } = require('../lib/chart');
-      const png = renderBalanceChart(points, `${ign} — Balance (${range})`, true);
-      const { AttachmentBuilder } = require('discord.js');
-      const file = new AttachmentBuilder(png, { name: 'history.png' });
+    const p = interaction.customId.split(':');
+    const action = p[1];
+    const ign = p[2];
+    await interaction.deferUpdate();
 
-      const rangeRow = new ActionRowBuilder().addComponents(
-        ...['24h', '7d', '30d', 'all'].map((r) =>
-          new ButtonBuilder()
-            .setCustomId(`stats:history:${ign}:${r}`)
-            .setLabel(r)
-            .setStyle(r === range ? ButtonStyle.Primary : ButtonStyle.Secondary)),
-      );
-      return interaction.editReply({ files: [file], components: [rangeRow] });
+    if (action === 'history') {
+      return interaction.editReply(buildHistoryView(ign, 'money', '7d', true));
+    }
+    if (action === 'hrange') {
+      return interaction.editReply(buildHistoryView(ign, p[3], p[5], p[4] === '1'));
+    }
+    if (action === 'hscale') {
+      return interaction.editReply(buildHistoryView(ign, p[3], p[4], p[5] !== '1'));
+    }
+    if (action === 'hback') {
+      return interaction.editReply(await buildStatsReply(ign));
     }
   },
 
-  _buildStatsReply: buildStatsReply,
+  // Select menu: stats:hstat:<ign>:<range>:<scale> — chosen value is the stat key.
+  async selectMenu(interaction) {
+    const p = interaction.customId.split(':');
+    if (p[1] === 'hstat') {
+      await interaction.deferUpdate();
+      const stat = interaction.values[0] || 'money';
+      return interaction.editReply(buildHistoryView(p[2], stat, p[3], p[4] === '1'));
+    }
+  },
 };

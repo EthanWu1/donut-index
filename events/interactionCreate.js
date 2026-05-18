@@ -26,6 +26,19 @@ module.exports = {
       }
       return;
     }
+    // String select menus — routed by customId prefix to the owning command.
+    if (interaction.isStringSelectMenu()) {
+      const owner = interaction.customId.split(':')[0];
+      const command = interaction.client.commands.get(owner);
+      if (command && command.selectMenu) {
+        try { await command.selectMenu(interaction); }
+        catch (err) {
+          console.error(`[select ${interaction.customId}]`, err);
+          await interaction.reply({ embeds: [errorEmbed('Menu action failed.')], flags: MessageFlags.Ephemeral }).catch(() => {});
+        }
+      }
+      return;
+    }
     // Buttons — routed by a `name:...` customId prefix to the owning command.
     if (interaction.isButton()) {
       const owner = interaction.customId.split(':')[0];
