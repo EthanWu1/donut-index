@@ -29,14 +29,17 @@ function prettyName(raw) {
   return s || 'Unknown item';
 }
 
+// DonutSMP auction listing shape (verified):
+// { seller: { name }, price, time_left, item: { id, count, display_name } }
 function normalizeListing(it) {
-  const rawName = readName(it.item) || readName(it.name) || readName(it.item_name)
-    || readName(it.display_name) || readName(it.product) || 'Unknown item';
-  const amount = Number(it.amount ?? it.count ?? it.quantity ?? (it.item && it.item.count) ?? 1) || 1;
-  const price = Number(it.price ?? it.cost ?? it.buy_price ?? 0) || 0;
-  const seller = readName(it.seller) || readName(it.owner) || readName(it.player)
-    || readName(it.seller_name) || 'unknown';
-  return { name: prettyName(rawName), amount, price, seller };
+  const item = it.item || {};
+  const dn = typeof item.display_name === 'string'
+    ? item.display_name.replace(/§./g, '').trim() : '';
+  const rawName = dn || item.id || readName(it.item) || 'Unknown item';
+  const amount = Number(item.count ?? it.count ?? it.amount ?? 1) || 1;
+  const price = Number(it.price ?? it.cost ?? 0) || 0;
+  const seller = (it.seller && it.seller.name) || readName(it.seller) || 'unknown';
+  return { name: prettyName(rawName), amount, price, seller: String(seller) };
 }
 
 async function fetchPage(apiPage) {
