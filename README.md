@@ -32,8 +32,8 @@ sudo apt-get install -y nodejs git
 sudo npm install -g pm2
 
 # 2. Get the code (push this repo to GitHub first, then clone it)
-git clone <your-repo-url> donutbot
-cd donutbot/donutdex
+git clone <your-repo-url> donut-index
+cd donut-index
 
 # 3. Install production dependencies
 npm ci --omit=dev
