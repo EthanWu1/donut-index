@@ -58,6 +58,19 @@ module.exports = {
       }
       return;
     }
+    // Modal submits — routed by customId prefix to the owning command.
+    if (interaction.isModalSubmit()) {
+      const owner = interaction.customId.split(':')[0];
+      const command = interaction.client.commands.get(owner);
+      if (command && command.modal) {
+        try { await command.modal(interaction); }
+        catch (err) {
+          logError(`[modal ${interaction.customId}]`, err);
+          await interaction.reply({ embeds: [errorEmbed('Action failed.')], flags: MessageFlags.Ephemeral }).catch(() => {});
+        }
+      }
+      return;
+    }
     // Buttons — routed by a `name:...` customId prefix to the owning command.
     if (interaction.isButton()) {
       const owner = interaction.customId.split(':')[0];
