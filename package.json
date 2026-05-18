@@ -1,0 +1,17 @@
+{
+  "name": "donut-index",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "deploy": "node deploy-commands.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.44",
+    "better-sqlite3": "^12.0.0",
+    "discord.js": "^14.17.0",
+    "dotenv": "^16.4.5"
+  }
+}
