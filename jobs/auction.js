@@ -33,7 +33,14 @@ function normalizeListing(it) {
   const amount = Number(item.count ?? it.count ?? it.amount ?? 1) || 1;
   const price = Number(it.price ?? it.cost ?? 0) || 0;
   const seller = (it.seller && it.seller.name) || readName(it.seller) || 'unknown';
-  return { name: prettyName(rawName), key: itemKey(item), amount, price, seller: String(seller) };
+  return {
+    name: prettyName(rawName),
+    key: itemKey(item),
+    amount,
+    price,
+    timeLeft: Number(it.time_left) || 0,
+    seller: String(seller),
+  };
 }
 
 // A completed sale. Same item/price shape as a listing; `unit` is per-item.

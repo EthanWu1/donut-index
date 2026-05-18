@@ -78,13 +78,13 @@ module.exports = {
 
   async execute(interaction) {
     const query = (interaction.options.getString('item') || '').trim();
-    return interaction.reply(view(1, query, 'price_desc'));
+    return interaction.reply(view(1, query, 'price_asc'));
   },
 
   // Button: ah:page:<page>:<sort>:<encodedQuery>
   async button(interaction) {
     const [, , pageStr, sort, enc] = interaction.customId.split(':');
-    const s = SORTS.includes(sort) ? sort : 'price_desc';
+    const s = SORTS.includes(sort) ? sort : 'price_asc';
     return interaction.update(view(Math.max(1, Number(pageStr) || 1), decodeURIComponent(enc || ''), s));
   },
 

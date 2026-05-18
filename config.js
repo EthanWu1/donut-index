@@ -34,5 +34,8 @@ module.exports = {
   ahRefreshMs: 6 * 60 * 1000,
   // Recent sold-auction pages indexed for /price (market average).
   ahTxnPages: 60,
+  // Leaderboard indexing for /rank.
+  lbMaxPages: 20,
+  lbRefreshMs: 15 * 60 * 1000,
   brand: 'Donut Index',
 };

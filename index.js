@@ -4,6 +4,7 @@ const { Client, Collection, GatewayIntentBits } = require('discord.js');
 const config = require('./config');
 const { startSnapshotJob } = require('./jobs/snapshot');
 const { startAuctionJob } = require('./jobs/auction');
+const { startLeaderboardJob } = require('./jobs/leaderboard');
 
 if (!config.token) { console.error('BOT_TOKEN missing in .env'); process.exit(1); }
 
@@ -27,5 +28,6 @@ for (const file of fs.readdirSync(eventsDir).filter((f) => f.endsWith('.js'))) {
 client.once('clientReady', () => {
   startSnapshotJob();
   startAuctionJob();
+  startLeaderboardJob();
 });
 client.login(config.token);

@@ -2,7 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js'
 const path = require('node:path');
 const fs = require('node:fs');
 const { formatNumber } = require('../lib/format');
-const { errorEmbed, WIDE } = require('../lib/embeds');
+const { errorEmbed } = require('../lib/embeds');
 const { itemEmoji } = require('../lib/itemEmojis');
 const config = require('../config');
 
@@ -84,7 +84,7 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor(config.colors.worth)
-      .setDescription(`${desc}\n${WIDE}`);
+      .setDescription(desc);
     return interaction.reply({ embeds: [embed] });
   },
 };
