@@ -18,6 +18,24 @@ const MAX_EMOJIS = 2000;
 const ITEMS_DIR = path.join(__dirname, '..', 'assets', 'items');
 const MAP_PATH = path.join(__dirname, '..', 'data', 'item-emojis.json');
 const STATE_PATH = path.join(__dirname, '..', 'data', '.emoji-state.json');
+const LOCK_PATH = path.join(__dirname, '..', 'data', '.emoji-import.lock');
+
+// Refuse to run if another import is already running (two processes sharing
+// the token hammer Discord and get the whole token throttled).
+function acquireLock() {
+  if (fs.existsSync(LOCK_PATH)) {
+    const pid = Number(fs.readFileSync(LOCK_PATH, 'utf8'));
+    let alive = false;
+    try { process.kill(pid, 0); alive = true; } catch { alive = false; }
+    if (alive) {
+      console.error(`Another import is already running (pid ${pid}). Aborting.`);
+      console.error('Kill it first:  pkill -f import-item-emojis');
+      process.exit(1);
+    }
+  }
+  fs.writeFileSync(LOCK_PATH, String(process.pid));
+  process.on('exit', () => { try { fs.unlinkSync(LOCK_PATH); } catch { /* ignore */ } });
+}
 
 const MIME = { '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp' };
 const PRIORITY = { '.webp': 0, '.gif': 1, '.png': 2 }; // animated formats first
@@ -39,6 +57,7 @@ async function main() {
     process.exit(1);
   }
   fs.mkdirSync(path.dirname(MAP_PATH), { recursive: true });
+  acquireLock();
 
   // Build target list: item key -> candidate files, animated formats first.
   const byKey = {};
@@ -72,7 +91,9 @@ async function main() {
         del += 1;
         if (del % 100 === 0) console.log(`  deleted ${del}/${junk.length}...`);
       } catch (err) {
-        console.warn(`  delete ${e.name}: ${err.message}`);
+        // 10014 = already gone (stale list); not a real failure.
+        if (err.code !== 10014) console.warn(`  delete ${e.name}: ${err.message}`);
+        else del += 1;
       }
     }
     console.log(`Deleted ${del} old emojis.`);
