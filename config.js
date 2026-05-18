@@ -19,6 +19,17 @@ module.exports = {
   snapshotIntervalMs: 3 * 60 * 60 * 1000,
   // DonutSMP /stats returns playtime in milliseconds; multiply to get seconds.
   playtimeUnitSeconds: 0.001,
-  embedColor: 0xe89b5a,
+  // Per-feature embed colors, so each command reads as its own thing.
+  colors: {
+    online: 0x3ba55d,
+    offline: 0xed4245,
+    leaderboard: 0xf1b32e,
+    auction: 0x4aa3df,
+    worth: 0x3ba55d,
+    history: 0x1abc9c,
+    error: 0xe04347,
+  },
+  // How many auction pages to scan when a search term is given.
+  ahSearchPages: 20,
   brand: 'Donut Index',
 };

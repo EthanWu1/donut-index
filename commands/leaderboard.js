@@ -34,7 +34,7 @@ function displayValue(type, value) {
 async function buildPage(type, page, callerIgn) {
   const raw = await api.getLeaderboard(type, page);
   const list = Array.isArray(raw) ? raw : raw.leaderboard || raw.entries || raw.players || [];
-  const rows = list.map(normalizeRow).map((r) => ({ name: r.name, display: displayValue(type, r.value) }));
+  const rows = list.slice(0, 10).map(normalizeRow).map((r) => ({ name: r.name, display: displayValue(type, r.value) }));
   const embed = leaderboardEmbed(type, page, rows, callerIgn);
 
   const typeRow = new ActionRowBuilder().addComponents(
@@ -66,7 +66,7 @@ module.exports = {
       return interaction.editReply(await buildPage(type, 1, callerIgn));
     } catch (err) {
       if (err instanceof api.RateLimitedError) {
-        return interaction.editReply({ embeds: [errorEmbed('DonutSMP API is rate-limited — try again shortly.')] });
+        return interaction.editReply({ embeds: [errorEmbed('DonutSMP API is rate-limited. Try again shortly.')] });
       }
       throw err;
     }

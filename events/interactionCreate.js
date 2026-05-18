@@ -1,5 +1,6 @@
 const { Events, MessageFlags } = require('discord.js');
 const { errorEmbed } = require('../lib/embeds');
+const db = require('../lib/db');
 
 module.exports = {
   name: Events.InteractionCreate,
@@ -8,6 +9,12 @@ module.exports = {
     if (interaction.isChatInputCommand()) {
       const command = interaction.client.commands.get(interaction.commandName);
       if (!command) return;
+      // Start tracking the caller's linked account as soon as they use the bot,
+      // so the snapshot job builds 24h history for every active user.
+      try {
+        const linkedIgn = db.getLink(interaction.user.id);
+        if (linkedIgn) db.trackPlayer(linkedIgn);
+      } catch { /* tracking is best-effort */ }
       try {
         await command.execute(interaction);
       } catch (err) {

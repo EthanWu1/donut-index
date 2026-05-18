@@ -11,16 +11,16 @@ const { renderChart } = require('../lib/chart');
 
 // Chartable stats — key matches both the snapshot column and the API field.
 const STATS = [
-  { key: 'money', label: 'Balance' },
-  { key: 'shards', label: 'Shards' },
-  { key: 'kills', label: 'Kills' },
-  { key: 'deaths', label: 'Deaths' },
-  { key: 'playtime', label: 'Playtime' },
-  { key: 'placed', label: 'Blocks Placed' },
-  { key: 'broken', label: 'Blocks Broken' },
-  { key: 'mobs', label: 'Mobs Killed' },
-  { key: 'spent', label: 'Money Spent' },
-  { key: 'made', label: 'Money Made' },
+  { key: 'money', label: 'Balance', emoji: 'balance' },
+  { key: 'shards', label: 'Shards', emoji: 'shards' },
+  { key: 'kills', label: 'Kills', emoji: 'kills' },
+  { key: 'deaths', label: 'Deaths', emoji: 'deaths' },
+  { key: 'playtime', label: 'Playtime', emoji: 'playtime' },
+  { key: 'placed', label: 'Blocks Placed', emoji: 'placed' },
+  { key: 'broken', label: 'Blocks Broken', emoji: 'broken' },
+  { key: 'mobs', label: 'Mobs Killed', emoji: 'mobs' },
+  { key: 'spent', label: 'Money Spent', emoji: 'gold_nugget' },
+  { key: 'made', label: 'Money Made', emoji: 'iron_nugget' },
 ];
 const RANGES = {
   '24h': { ms: 86400_000, label: 'Last 24 hours' },
@@ -29,7 +29,12 @@ const RANGES = {
   all: { ms: Infinity, label: 'All Time' },
 };
 
-// Resolves the target IGN from the interaction options / linked account.
+// Turns "<:name:id>" / "<a:name:id>" into a select-menu emoji object.
+function parseEmoji(str) {
+  const m = /^<(a)?:(\w+):(\d+)>$/.exec(str || '');
+  return m ? { id: m[3], name: m[2], animated: !!m[1] } : undefined;
+}
+
 function resolveIgn(interaction) {
   const username = interaction.options.getString('username');
   if (username) return username.trim();
@@ -84,8 +89,8 @@ async function buildStatsReply(ign) {
   return { embeds: [embed], components: [row], files: [] };
 }
 
-// Builds the Stats History view: chart image + stat selector + range + controls.
-function buildHistoryView(ign, statKey, range, scale) {
+// Builds the Stats History view: chart image + stat selector + range + back.
+function buildHistoryView(ign, statKey, range) {
   const stat = STATS.find((s) => s.key === statKey) || STATS[0];
   const rangeDef = RANGES[range] || RANGES['7d'];
   const since = rangeDef.ms === Infinity ? 0 : Date.now() - rangeDef.ms;
@@ -96,36 +101,36 @@ function buildHistoryView(ign, statKey, range, scale) {
     ts: r.ts,
     value: isPlaytime ? (r.playtime * config.playtimeUnitSeconds) / 3600 : r[stat.key],
   }));
-  const title = `${ign} — ${stat.label}${isPlaytime ? ' (hours)' : ''}`;
-  const png = renderChart(points, { title, startAtZero: scale });
+  const title = `${ign} · ${stat.label}${isPlaytime ? ' (hours)' : ''}`;
+  const png = renderChart(points, { title });
   const file = new AttachmentBuilder(png, { name: 'history.png' });
   const embed = historyEmbed(ign, stat.label, rangeDef.label);
 
-  const s = scale ? 1 : 0;
   const selectRow = new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
-      .setCustomId(`stats:hstat:${ign}:${range}:${s}`)
+      .setCustomId(`stats:hstat:${ign}:${range}`)
       .setPlaceholder('Select a stat to chart')
-      .addOptions(STATS.map((o) => ({ label: o.label, value: o.key, default: o.key === stat.key }))),
+      .addOptions(STATS.map((o) => ({
+        label: o.label,
+        value: o.key,
+        emoji: parseEmoji(emojis[o.emoji]),
+        default: o.key === stat.key,
+      }))),
   );
   const rangeRow = new ActionRowBuilder().addComponents(
     ...Object.keys(RANGES).map((r) =>
       new ButtonBuilder()
-        .setCustomId(`stats:hrange:${ign}:${stat.key}:${s}:${r}`)
+        .setCustomId(`stats:hrange:${ign}:${stat.key}:${r}`)
         .setLabel(r === 'all' ? 'All Time' : r)
         .setStyle(r === range ? ButtonStyle.Primary : ButtonStyle.Secondary)),
   );
-  const ctrlRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`stats:hscale:${ign}:${stat.key}:${range}:${s}`)
-      .setLabel(scale ? 'Scale: Start at 0' : 'Scale: Auto')
-      .setStyle(ButtonStyle.Secondary),
+  const backRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`stats:hback:${ign}`)
       .setLabel('Back to Stats')
       .setStyle(ButtonStyle.Danger),
   );
-  return { embeds: [embed], files: [file], components: [selectRow, rangeRow, ctrlRow] };
+  return { embeds: [embed], files: [file], components: [selectRow, rangeRow, backRow] };
 }
 
 module.exports = {
@@ -148,14 +153,13 @@ module.exports = {
         return interaction.editReply({ embeds: [errorEmbed(`No DonutSMP player named \`${resolved}\` was found.`)] });
       }
       if (err instanceof api.RateLimitedError) {
-        return interaction.editReply({ embeds: [errorEmbed('DonutSMP API is rate-limited right now — try again shortly.')] });
+        return interaction.editReply({ embeds: [errorEmbed('DonutSMP API is rate-limited right now. Try again shortly.')] });
       }
       throw err;
     }
   },
 
-  // Buttons: stats:history:<ign> | stats:hrange:<ign>:<stat>:<scale>:<range>
-  //          stats:hscale:<ign>:<stat>:<range>:<scale> | stats:hback:<ign>
+  // Buttons: stats:history:<ign> | stats:hrange:<ign>:<stat>:<range> | stats:hback:<ign>
   async button(interaction) {
     const p = interaction.customId.split(':');
     const action = p[1];
@@ -163,26 +167,22 @@ module.exports = {
     await interaction.deferUpdate();
 
     if (action === 'history') {
-      return interaction.editReply(buildHistoryView(ign, 'money', '7d', true));
+      return interaction.editReply(buildHistoryView(ign, 'money', '7d'));
     }
     if (action === 'hrange') {
-      return interaction.editReply(buildHistoryView(ign, p[3], p[5], p[4] === '1'));
-    }
-    if (action === 'hscale') {
-      return interaction.editReply(buildHistoryView(ign, p[3], p[4], p[5] !== '1'));
+      return interaction.editReply(buildHistoryView(ign, p[3], p[4]));
     }
     if (action === 'hback') {
       return interaction.editReply(await buildStatsReply(ign));
     }
   },
 
-  // Select menu: stats:hstat:<ign>:<range>:<scale> — chosen value is the stat key.
+  // Select menu: stats:hstat:<ign>:<range> — chosen value is the stat key.
   async selectMenu(interaction) {
     const p = interaction.customId.split(':');
     if (p[1] === 'hstat') {
       await interaction.deferUpdate();
-      const stat = interaction.values[0] || 'money';
-      return interaction.editReply(buildHistoryView(p[2], stat, p[3], p[4] === '1'));
+      return interaction.editReply(buildHistoryView(p[2], interaction.values[0] || 'money', p[3]));
     }
   },
 };
