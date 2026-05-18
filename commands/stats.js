@@ -5,22 +5,22 @@ const {
 const api = require('../lib/api');
 const db = require('../lib/db');
 const config = require('../config');
-const emojis = require('../lib/emojis');
 const { statsEmbed, historyEmbed, errorEmbed } = require('../lib/embeds');
 const { renderChart } = require('../lib/chart');
 
 // Chartable stats — key matches both the snapshot column and the API field.
+// Unicode emoji only — custom emoji are rejected by Discord on select menus.
 const STATS = [
-  { key: 'money', label: 'Balance', emoji: 'balance' },
-  { key: 'shards', label: 'Shards', emoji: 'shards' },
-  { key: 'kills', label: 'Kills', emoji: 'kills' },
-  { key: 'deaths', label: 'Deaths', emoji: 'deaths' },
-  { key: 'playtime', label: 'Playtime', emoji: 'playtime' },
-  { key: 'placed', label: 'Blocks Placed', emoji: 'placed' },
-  { key: 'broken', label: 'Blocks Broken', emoji: 'broken' },
-  { key: 'mobs', label: 'Mobs Killed', emoji: 'mobs' },
-  { key: 'spent', label: 'Money Spent', emoji: 'gold_nugget' },
-  { key: 'made', label: 'Money Made', emoji: 'iron_nugget' },
+  { key: 'money', label: 'Balance', emoji: '💰' },
+  { key: 'shards', label: 'Shards', emoji: '🔷' },
+  { key: 'kills', label: 'Kills', emoji: '⚔️' },
+  { key: 'deaths', label: 'Deaths', emoji: '☠️' },
+  { key: 'playtime', label: 'Playtime', emoji: '🕒' },
+  { key: 'placed', label: 'Blocks Placed', emoji: '🧱' },
+  { key: 'broken', label: 'Blocks Broken', emoji: '⛏️' },
+  { key: 'mobs', label: 'Mobs Killed', emoji: '🧟' },
+  { key: 'spent', label: 'Money Spent', emoji: '🛒' },
+  { key: 'made', label: 'Money Made', emoji: '💵' },
 ];
 const RANGES = {
   '24h': { ms: 86400_000, label: 'Last 24 hours' },
@@ -28,12 +28,6 @@ const RANGES = {
   '30d': { ms: 30 * 86400_000, label: 'Last 30 days' },
   all: { ms: Infinity, label: 'All Time' },
 };
-
-// Turns "<:name:id>" / "<a:name:id>" into a select-menu emoji object.
-function parseEmoji(str) {
-  const m = /^<(a)?:(\w+):(\d+)>$/.exec(str || '');
-  return m ? { id: m[3], name: m[2], animated: !!m[1] } : undefined;
-}
 
 function resolveIgn(interaction) {
   const username = interaction.options.getString('username');
@@ -112,7 +106,7 @@ function buildHistoryView(ign, statKey, range) {
       .addOptions(STATS.map((o) => ({
         label: o.label,
         value: o.key,
-        emoji: parseEmoji(emojis[o.emoji]),
+        emoji: o.emoji,
         default: o.key === stat.key,
       }))),
   );

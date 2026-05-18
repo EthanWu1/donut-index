@@ -4,28 +4,22 @@ const {
 const api = require('../lib/api');
 const db = require('../lib/db');
 const config = require('../config');
-const emojis = require('../lib/emojis');
 const { formatNumber, formatDuration } = require('../lib/format');
 const { leaderboardEmbed, errorEmbed } = require('../lib/embeds');
 
+// Unicode emoji only — custom emoji are rejected by Discord on select menus.
 const TYPES = [
-  { value: 'money', label: 'Money', emoji: 'balance' },
-  { value: 'shards', label: 'Shards', emoji: 'shards' },
-  { value: 'kills', label: 'Kills', emoji: 'kills' },
-  { value: 'deaths', label: 'Deaths', emoji: 'deaths' },
-  { value: 'playtime', label: 'Playtime', emoji: 'playtime' },
-  { value: 'placedblocks', label: 'Blocks Placed', emoji: 'placed' },
-  { value: 'brokenblocks', label: 'Blocks Broken', emoji: 'broken' },
-  { value: 'mobskilled', label: 'Mobs Killed', emoji: 'mobs' },
-  { value: 'sell', label: 'Money Made', emoji: 'iron_nugget' },
-  { value: 'shop', label: 'Money Spent', emoji: 'gold_nugget' },
+  { value: 'money', label: 'Money', emoji: '💰' },
+  { value: 'shards', label: 'Shards', emoji: '🔷' },
+  { value: 'kills', label: 'Kills', emoji: '⚔️' },
+  { value: 'deaths', label: 'Deaths', emoji: '☠️' },
+  { value: 'playtime', label: 'Playtime', emoji: '🕒' },
+  { value: 'placedblocks', label: 'Blocks Placed', emoji: '🧱' },
+  { value: 'brokenblocks', label: 'Blocks Broken', emoji: '⛏️' },
+  { value: 'mobskilled', label: 'Mobs Killed', emoji: '🧟' },
+  { value: 'sell', label: 'Money Made', emoji: '💵' },
+  { value: 'shop', label: 'Money Spent', emoji: '🛒' },
 ];
-
-// Turns "<:name:id>" / "<a:name:id>" into a select-menu emoji object.
-function parseEmoji(str) {
-  const m = /^<(a)?:(\w+):(\d+)>$/.exec(str || '');
-  return m ? { id: m[3], name: m[2], animated: !!m[1] } : undefined;
-}
 
 function normalizeRow(row) {
   const name = row.name || row.username || row.player || row.ign || 'unknown';
@@ -52,7 +46,7 @@ async function buildPage(type, page, callerIgn) {
       .addOptions(TYPES.map((t) => ({
         label: t.label,
         value: t.value,
-        emoji: parseEmoji(emojis[t.emoji]),
+        emoji: t.emoji,
         default: t.value === type,
       }))),
   );
