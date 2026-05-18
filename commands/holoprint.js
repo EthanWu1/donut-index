@@ -41,23 +41,30 @@ async function fetchAttachmentBuffer(file) {
 // .mcstructure for the HoloPrint web app. Shared by /holoprint and /schematics.
 async function deliverHoloprint(interaction, buffer, sourceName) {
   const result = await litematicToHoloprint(buffer);
-  const base = baseName(result.name || sourceName);
+  const base = baseName(sourceName || result.name);
   const dims = result.size
     ? `${formatCount(result.size.x)} × ${formatCount(result.size.y)} × ${formatCount(result.size.z)}`
     : 'unknown';
   const meta = `Size \`${dims}\` · \`${formatCount(result.blockCount)}\` blocks.`;
+  // Source content the conversion can't carry over (entities, signs, ...).
+  const warningLines = (result.warnings && result.warnings.length)
+    ? ['', '**Not included:**', ...result.warnings.map((w) => `- ${w}`)]
+    : [];
 
   if (result.kind === 'pack') {
-    const file = new AttachmentBuilder(result.pack, { name: result.name || `${base}.holoprint.mcpack` });
+    // HoloPrint names packs "<name>.holoprint.mcpack"; deliver a plain .mcpack.
+    const file = new AttachmentBuilder(result.pack, { name: `${base}.mcpack` });
     const embed = new EmbedBuilder()
       .setColor(config.colors.schematic)
       .setDescription([
         '### HoloPrint pack ready',
         '',
-        `Built a \`.holoprint.mcpack\` from **${sourceName || base}**.`,
+        `Built a HoloPrint \`.mcpack\` from **${sourceName || base}**.`,
         meta,
         '',
-        'Import it in Minecraft Bedrock, then place the hologram to build along.',
+        'Open it on a device running Minecraft **Bedrock** to import it, then'
+        + ' place the hologram to build along.',
+        ...warningLines,
       ].join('\n'));
     return interaction.editReply({ embeds: [embed], files: [file], components: [] });
   }
@@ -71,7 +78,8 @@ async function deliverHoloprint(interaction, buffer, sourceName) {
     meta,
     '',
     'The automatic pack build was unavailable, so drop this `.mcstructure` into'
-    + ' the HoloPrint web app to finish your `.holoprint.mcpack`.',
+    + ' the HoloPrint web app to finish your pack.',
+    ...warningLines,
   ];
   if (result.packError) lines.push('', `_Pack builder said: ${result.packError}_`);
   const embed = new EmbedBuilder()
