@@ -31,7 +31,7 @@ function view(page, query, sort) {
   const safePage = Math.min(Math.max(1, page), totalPages);
   const pageItems = items.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
 
-  const heading = query ? `Auction House: "${query}"` : 'Auction House';
+  const heading = query || 'Auction House';
   const footer = `${items.length} listing${items.length === 1 ? '' : 's'}`
     + ` · page ${safePage}/${totalPages} · updated ${relativeTime(updatedAt)}`;
   const embed = auctionEmbed(heading, pageItems, footer);
