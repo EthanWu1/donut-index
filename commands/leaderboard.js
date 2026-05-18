@@ -4,22 +4,33 @@ const {
 const api = require('../lib/api');
 const db = require('../lib/db');
 const config = require('../config');
+const { itemEmoji } = require('../lib/itemEmojis');
 const { formatNumber, formatDuration } = require('../lib/format');
 const { leaderboardEmbed, errorEmbed } = require('../lib/embeds');
 
-// Unicode emoji only — custom emoji are rejected by Discord on select menus.
+// `item` is the bot's own application emoji; `fallback` is unicode shown
+// until the item-emoji import has populated the map.
 const TYPES = [
-  { value: 'money', label: 'Money', emoji: '💰' },
-  { value: 'shards', label: 'Shards', emoji: '🔷' },
-  { value: 'kills', label: 'Kills', emoji: '⚔️' },
-  { value: 'deaths', label: 'Deaths', emoji: '☠️' },
-  { value: 'playtime', label: 'Playtime', emoji: '🕒' },
-  { value: 'placedblocks', label: 'Blocks Placed', emoji: '🧱' },
-  { value: 'brokenblocks', label: 'Blocks Broken', emoji: '⛏️' },
-  { value: 'mobskilled', label: 'Mobs Killed', emoji: '🧟' },
-  { value: 'sell', label: 'Money Made', emoji: '💵' },
-  { value: 'shop', label: 'Money Spent', emoji: '🛒' },
+  { value: 'money', label: 'Money', item: 'emerald', fallback: '💰' },
+  { value: 'shards', label: 'Shards', item: 'amethyst_shard', fallback: '🔷' },
+  { value: 'kills', label: 'Kills', item: 'diamond_sword', fallback: '⚔️' },
+  { value: 'deaths', label: 'Deaths', item: 'skeleton_skull', fallback: '☠️' },
+  { value: 'playtime', label: 'Playtime', item: 'clock', fallback: '🕒' },
+  { value: 'placedblocks', label: 'Blocks Placed', item: 'stone', fallback: '🧱' },
+  { value: 'brokenblocks', label: 'Blocks Broken', item: 'cobblestone', fallback: '⛏️' },
+  { value: 'mobskilled', label: 'Mobs Killed', item: 'zombie_head', fallback: '🧟' },
+  { value: 'sell', label: 'Money Made', item: 'iron_nugget', fallback: '💵' },
+  { value: 'shop', label: 'Money Spent', item: 'gold_nugget', fallback: '🛒' },
 ];
+
+// "<:name:id>" -> { id, name, animated } for a select-menu option emoji.
+function parseEmoji(str) {
+  const m = /^<(a)?:(\w+):(\d+)>$/.exec(str || '');
+  return m ? { id: m[3], name: m[2], animated: !!m[1] } : null;
+}
+function optionEmoji(item, fallback) {
+  return parseEmoji(itemEmoji(item)) || fallback;
+}
 
 function normalizeRow(row) {
   const name = row.name || row.username || row.player || row.ign || 'unknown';
@@ -46,7 +57,7 @@ async function buildPage(type, page, callerIgn) {
       .addOptions(TYPES.map((t) => ({
         label: t.label,
         value: t.value,
-        emoji: t.emoji,
+        emoji: optionEmoji(t.item, t.fallback),
         default: t.value === type,
       }))),
   );

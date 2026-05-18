@@ -5,23 +5,35 @@ const {
 const api = require('../lib/api');
 const db = require('../lib/db');
 const config = require('../config');
+const { itemEmoji } = require('../lib/itemEmojis');
 const { statsEmbed, historyEmbed, errorEmbed } = require('../lib/embeds');
 const { renderChart } = require('../lib/chart');
 
-// Chartable stats — key matches both the snapshot column and the API field.
-// Unicode emoji only — custom emoji are rejected by Discord on select menus.
+// `item` is the bot's own application emoji (from the item-emoji import) — the
+// only kind of custom emoji Discord lets the bot use on a select menu.
+// `fallback` is unicode, shown until the import has populated the map.
 const STATS = [
-  { key: 'money', label: 'Balance', emoji: '💰' },
-  { key: 'shards', label: 'Shards', emoji: '🔷' },
-  { key: 'kills', label: 'Kills', emoji: '⚔️' },
-  { key: 'deaths', label: 'Deaths', emoji: '☠️' },
-  { key: 'playtime', label: 'Playtime', emoji: '🕒' },
-  { key: 'placed', label: 'Blocks Placed', emoji: '🧱' },
-  { key: 'broken', label: 'Blocks Broken', emoji: '⛏️' },
-  { key: 'mobs', label: 'Mobs Killed', emoji: '🧟' },
-  { key: 'spent', label: 'Money Spent', emoji: '🛒' },
-  { key: 'made', label: 'Money Made', emoji: '💵' },
+  { key: 'money', label: 'Balance', item: 'emerald', fallback: '💰' },
+  { key: 'shards', label: 'Shards', item: 'amethyst_shard', fallback: '🔷' },
+  { key: 'kills', label: 'Kills', item: 'diamond_sword', fallback: '⚔️' },
+  { key: 'deaths', label: 'Deaths', item: 'skeleton_skull', fallback: '☠️' },
+  { key: 'playtime', label: 'Playtime', item: 'clock', fallback: '🕒' },
+  { key: 'placed', label: 'Blocks Placed', item: 'stone', fallback: '🧱' },
+  { key: 'broken', label: 'Blocks Broken', item: 'cobblestone', fallback: '⛏️' },
+  { key: 'mobs', label: 'Mobs Killed', item: 'zombie_head', fallback: '🧟' },
+  { key: 'spent', label: 'Money Spent', item: 'gold_nugget', fallback: '🛒' },
+  { key: 'made', label: 'Money Made', item: 'iron_nugget', fallback: '💵' },
 ];
+
+// "<:name:id>" -> { id, name, animated } for a select-menu option emoji.
+function parseEmoji(str) {
+  const m = /^<(a)?:(\w+):(\d+)>$/.exec(str || '');
+  return m ? { id: m[3], name: m[2], animated: !!m[1] } : null;
+}
+function optionEmoji(item, fallback) {
+  return parseEmoji(itemEmoji(item)) || fallback;
+}
+
 const RANGES = {
   '24h': { ms: 86400_000, label: 'Last 24 hours' },
   '7d': { ms: 7 * 86400_000, label: 'Last 7 days' },
@@ -106,7 +118,7 @@ function buildHistoryView(ign, statKey, range) {
       .addOptions(STATS.map((o) => ({
         label: o.label,
         value: o.key,
-        emoji: o.emoji,
+        emoji: optionEmoji(o.item, o.fallback),
         default: o.key === stat.key,
       }))),
   );
