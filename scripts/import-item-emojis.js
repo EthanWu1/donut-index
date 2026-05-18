@@ -1,42 +1,21 @@
 /*
- * One-time importer: pulls the MineCatalog registry (one proper inventory
- * icon per Minecraft item/block, ~1,227 entries), wipes any previously
- * uploaded emojis, and uploads the icons as Discord application emojis.
- * Writes data/item-emojis.json (item id -> "<:name:id>").
+ * One-time importer: uploads the bundled item icons (assets/items/, ~1,505
+ * rendered Minecraft 1.21.11 icons) as Discord application emojis. Wipes any
+ * previously uploaded emojis first. Writes data/item-emojis.json.
  *
  * Run on the host with the bot token:  node scripts/import-item-emojis.js
- * Source: https://github.com/JHVIW/MineCatalog  (MIT, daily-updated)
+ * Safe to re-run.
  */
 require('dotenv').config();
 const fs = require('node:fs');
 const path = require('node:path');
-const https = require('node:https');
 const { REST, Routes } = require('discord.js');
 
 const TOKEN = process.env.BOT_TOKEN;
 const APP_ID = process.env.CLIENT_ID;
 const MAX_EMOJIS = 2000;
-const SRC = 'https://raw.githubusercontent.com/JHVIW/MineCatalog/main/minecraft-items.json';
+const ITEMS_DIR = path.join(__dirname, '..', 'assets', 'items');
 const MAP_PATH = path.join(__dirname, '..', 'data', 'item-emojis.json');
-
-// GET with redirect handling, resolves to a Buffer.
-function get(url) {
-  return new Promise((resolve, reject) => {
-    https.get(url, { headers: { 'User-Agent': 'donut-index' } }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        res.resume();
-        return resolve(get(res.headers.location));
-      }
-      if (res.statusCode !== 200) {
-        res.resume();
-        return reject(new Error(`HTTP ${res.statusCode} for ${url}`));
-      }
-      const chunks = [];
-      res.on('data', (c) => chunks.push(c));
-      res.on('end', () => resolve(Buffer.concat(chunks)));
-    }).on('error', reject);
-  });
-}
 
 async function main() {
   if (!TOKEN || !APP_ID) {
@@ -45,14 +24,14 @@ async function main() {
   }
   fs.mkdirSync(path.dirname(MAP_PATH), { recursive: true });
 
-  console.log('Downloading MineCatalog item registry...');
-  const data = JSON.parse((await get(SRC)).toString());
-  const items = Array.isArray(data.items) ? data.items : [];
-  console.log(`Registry has ${items.length} items.`);
+  const files = fs.readdirSync(ITEMS_DIR)
+    .filter((f) => f.startsWith('minecraft_') && f.endsWith('.png'))
+    .sort();
+  console.log(`Found ${files.length} item icons in assets/items.`);
 
   const rest = new REST({ version: '10' }).setToken(TOKEN);
 
-  // Clear previously uploaded emojis (the old run uploaded texture fragments).
+  // Clear previously uploaded emojis (old runs used different icon sets).
   const existingRes = await rest.get(Routes.applicationEmojis(APP_ID));
   const existing = existingRes.items || existingRes || [];
   if (existing.length) {
@@ -70,29 +49,27 @@ async function main() {
   }
 
   const map = {};
-  const usedNames = new Set();
+  const used = new Set();
   let uploaded = 0;
-  for (const it of items) {
+  for (const file of files) {
     if (uploaded >= MAX_EMOJIS) {
       console.log(`Hit the ${MAX_EMOJIS} emoji cap, stopping.`);
       break;
     }
-    const id = String(it.itemId || '').toLowerCase();
-    const img = it.imgSrc;
-    if (!id || typeof img !== 'string' || !img.startsWith('data:image')) continue;
-
-    let name = id.slice(0, 32).replace(/[^a-z0-9_]/g, '_');
+    const key = file.replace(/^minecraft_/, '').replace(/\.png$/, '').toLowerCase();
+    let name = key.slice(0, 32).replace(/[^a-z0-9_]/g, '_');
     if (name.length < 2) name = `mc_${name}`;
-    while (usedNames.has(name)) name = `${name.slice(0, 29)}${Math.floor(Math.random() * 900 + 100)}`;
-    usedNames.add(name);
+    while (used.has(name)) name = `${name.slice(0, 29)}${Math.floor(Math.random() * 900 + 100)}`;
+    used.add(name);
 
+    const img = `data:image/png;base64,${fs.readFileSync(path.join(ITEMS_DIR, file)).toString('base64')}`;
     try {
       const created = await rest.post(Routes.applicationEmojis(APP_ID), { body: { name, image: img } });
-      map[id] = `<:${name}:${created.id}>`;
+      map[key] = `<:${name}:${created.id}>`;
       uploaded += 1;
       if (uploaded % 100 === 0) console.log(`  uploaded ${uploaded}...`);
     } catch (e) {
-      console.warn(`  skip ${id}: ${e.message}`);
+      console.warn(`  skip ${key}: ${e.message}`);
     }
   }
 
