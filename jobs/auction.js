@@ -21,55 +21,90 @@ function prettyName(raw) {
   return s || 'Unknown item';
 }
 
+function itemKey(item) {
+  return String((item && item.id) || '').replace(/^minecraft:/i, '').toLowerCase();
+}
+
 function normalizeListing(it) {
   const item = it.item || {};
   const dn = typeof item.display_name === 'string'
     ? item.display_name.replace(/§./g, '').trim() : '';
   const rawName = dn || item.id || readName(it.item) || 'Unknown item';
-  const key = String(item.id || '').replace(/^minecraft:/i, '').toLowerCase();
   const amount = Number(item.count ?? it.count ?? it.amount ?? 1) || 1;
   const price = Number(it.price ?? it.cost ?? 0) || 0;
   const seller = (it.seller && it.seller.name) || readName(it.seller) || 'unknown';
-  return { name: prettyName(rawName), key, amount, price, seller: String(seller) };
+  return { name: prettyName(rawName), key: itemKey(item), amount, price, seller: String(seller) };
+}
+
+// A completed sale. Same item/price shape as a listing; `unit` is per-item.
+function normalizeTxn(t) {
+  const item = t.item || {};
+  const amount = Number(item.count ?? t.count ?? 1) || 1;
+  const price = Number(t.price ?? t.cost ?? 0) || 0;
+  return {
+    name: prettyName(item.id || readName(t.item) || 'Unknown item'),
+    key: itemKey(item),
+    amount,
+    price,
+    unit: amount > 0 ? price / amount : price,
+  };
 }
 
 let listings = [];
+let transactions = [];
 let updatedAt = 0;
 let building = false;
 
 function getAuctionIndex() {
-  return { listings, updatedAt, building };
+  return { listings, transactions, updatedAt, building };
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Walks every auction page until an empty page, building a fresh index.
+function extractList(raw) {
+  if (Array.isArray(raw)) return raw;
+  return raw.auctions || raw.listings || raw.transactions || raw.items || raw.result || [];
+}
+
+// Walks every auction page (and recent sold pages) into a fresh index.
 async function rebuild() {
   if (building) return;
   building = true;
-  const collected = [];
   try {
+    const live = [];
     for (let p = 1; p <= config.ahMaxPages; p++) {
       let raw;
       try {
         raw = await api.getAuctionList(p);
       } catch (e) {
-        console.warn(`[auction] page ${p}: ${e.message}`);
+        console.warn(`[auction] list page ${p}: ${e.message}`);
         break;
       }
-      const list = Array.isArray(raw)
-        ? raw : (raw.auctions || raw.listings || raw.items || raw.result || []);
+      const list = extractList(raw);
       if (!Array.isArray(list) || list.length === 0) break;
-      for (const it of list) collected.push(normalizeListing(it));
+      for (const it of list) live.push(normalizeListing(it));
       await sleep(300);
     }
-    if (collected.length > 0) {
-      listings = collected;
-      updatedAt = Date.now();
-      console.log(`[auction] indexed ${listings.length} listings`);
-    } else {
-      console.warn('[auction] rebuild produced 0 listings; keeping previous index');
+
+    const sold = [];
+    for (let p = 1; p <= config.ahTxnPages; p++) {
+      let raw;
+      try {
+        raw = await api.getAuctionTransactions(p);
+      } catch (e) {
+        console.warn(`[auction] txn page ${p}: ${e.message}`);
+        break;
+      }
+      const list = extractList(raw);
+      if (!Array.isArray(list) || list.length === 0) break;
+      for (const t of list) sold.push(normalizeTxn(t));
+      await sleep(300);
     }
+
+    if (live.length > 0) listings = live;
+    if (sold.length > 0) transactions = sold;
+    updatedAt = Date.now();
+    console.log(`[auction] indexed ${listings.length} listings, ${transactions.length} recent sales`);
   } finally {
     building = false;
   }

@@ -58,7 +58,23 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('ah')
     .setDescription('Browse or search the DonutSMP auction house')
-    .addStringOption((o) => o.setName('item').setDescription('Search for items containing this text')),
+    .addStringOption((o) =>
+      o.setName('item').setDescription('Search for items containing this text').setAutocomplete(true)),
+
+  async autocomplete(interaction) {
+    const { listings } = getAuctionIndex();
+    const q = interaction.options.getFocused().toLowerCase();
+    const seen = new Set();
+    const out = [];
+    for (const it of listings) {
+      if (out.length >= 25) break;
+      if (it.name.toLowerCase().includes(q) && !seen.has(it.name)) {
+        seen.add(it.name);
+        out.push({ name: it.name, value: it.name });
+      }
+    }
+    await interaction.respond(out);
+  },
 
   async execute(interaction) {
     const query = (interaction.options.getString('item') || '').trim();

@@ -38,7 +38,15 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('worth')
     .setDescription('Look up the sell value of an item')
-    .addStringOption((o) => o.setName('item').setDescription('Item name').setRequired(true)),
+    .addStringOption((o) =>
+      o.setName('item').setDescription('Item name').setRequired(true).setAutocomplete(true)),
+
+  async autocomplete(interaction) {
+    const prices = loadPrices();
+    const q = interaction.options.getFocused().toLowerCase().replace(/\s+/g, '_');
+    const out = Object.keys(prices).filter((k) => k.includes(q)).slice(0, 25);
+    await interaction.respond(out.map((k) => ({ name: titleCase(k), value: titleCase(k) })));
+  },
 
   async execute(interaction) {
     const prices = loadPrices();

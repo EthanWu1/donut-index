@@ -32,5 +32,7 @@ module.exports = {
   // Auction house indexing: the whole AH is scanned into memory on a timer.
   ahMaxPages: 1000,
   ahRefreshMs: 6 * 60 * 1000,
+  // Recent sold-auction pages indexed for /price (market average).
+  ahTxnPages: 60,
   brand: 'Donut Index',
 };

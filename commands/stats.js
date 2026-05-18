@@ -136,8 +136,15 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('stats')
     .setDescription('Show DonutSMP stats for a player')
-    .addStringOption((o) => o.setName('username').setDescription('Minecraft IGN').setMaxLength(16))
+    .addStringOption((o) =>
+      o.setName('username').setDescription('Minecraft IGN').setMaxLength(16).setAutocomplete(true))
     .addUserOption((o) => o.setName('user').setDescription('A linked Discord user')),
+
+  async autocomplete(interaction) {
+    const q = interaction.options.getFocused().toLowerCase();
+    const out = db.allTracked().filter((i) => i.toLowerCase().includes(q)).slice(0, 25);
+    await interaction.respond(out.map((i) => ({ name: i, value: i })));
+  },
 
   async execute(interaction) {
     await interaction.deferReply();
