@@ -44,6 +44,10 @@ module.exports = {
   schematicForumChannelId: process.env.SCHEMATIC_FORUM_CHANNEL_ID || '1504844039546208386',
   schematicsRefreshMs: 15 * 60 * 1000,
   brand: 'Donut Index',
+  // HoloPrint web app — /holoprint links here so the user can turn the
+  // converted .mcstructure into a .holoprint.mcpack. Optional; if unset the
+  // command still delivers the .mcstructure, just without the button.
+  holoprintUrl: process.env.HOLOPRINT_URL || null,
   // /link ownership check: the user proves they own an IGN by paying a random
   // code amount to this account; the bot confirms it via balance deltas.
   linkVerifyTarget: process.env.LINK_VERIFY_TARGET || 'Vi2910NC',

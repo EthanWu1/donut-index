@@ -7,6 +7,7 @@ const {
 const config = require('../config');
 const { getSchematicIndex } = require('../jobs/schematics');
 const { errorEmbed } = require('../lib/embeds');
+const { deliverHoloprint } = require('./holoprint');
 
 const PER_PAGE = 8;
 const TAG_RENDERS_DIR = path.join(__dirname, '..', 'assets', 'tag-renders');
@@ -135,6 +136,7 @@ function buildDetailView(threadId, tag, page) {
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`schematics:dl:${s.threadId}`).setLabel('Download').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`schematics:holo:${s.threadId}`).setLabel('HoloPrint').setStyle(ButtonStyle.Secondary),
   );
   if (guildId) {
     row.addComponents(
@@ -208,6 +210,15 @@ module.exports = {
       try {
         const { buffer, name } = await fetchSchematicFile(interaction.client, parts[2]);
         return interaction.editReply({ files: [new AttachmentBuilder(buffer, { name })] });
+      } catch (err) {
+        return interaction.editReply({ embeds: [errorEmbed(err.message)] });
+      }
+    }
+    if (parts[1] === 'holo') {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      try {
+        const { buffer, name } = await fetchSchematicFile(interaction.client, parts[2]);
+        return await deliverHoloprint(interaction, buffer, name);
       } catch (err) {
         return interaction.editReply({ embeds: [errorEmbed(err.message)] });
       }
