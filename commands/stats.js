@@ -84,7 +84,7 @@ async function buildStatsReply(ign) {
       .setCustomId(`stats:history:${ign}`)
       .setLabel('Stats History')
       .setStyle(ButtonStyle.Secondary)
-      .setEmoji(emojis.clock_moving),
+      .setEmoji('🕒'),
   );
   return { embeds: [embed], components: [row], files: [] };
 }

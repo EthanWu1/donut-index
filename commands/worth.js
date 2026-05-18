@@ -69,14 +69,14 @@ module.exports = {
     if (matches.length === 1) {
       const k = matches[0];
       const ic = itemEmoji(k);
-      desc = `One ${ic ? `${ic} ` : ''}**${titleCase(k)}** is worth **$${formatNumber(prices[k])}** at 1x.`;
+      desc = `### ${ic ? `${ic} ` : ''}${titleCase(k)}\nWorth **$${formatNumber(prices[k])}** at 1x.`;
     } else {
       const shown = matches.slice(0, MAX_LIST);
       const lines = shown.map((k) => {
         const ic = itemEmoji(k);
         return `${ic ? `${ic} ` : ''}**${titleCase(k)}** \`$${formatNumber(prices[k])}\``;
       });
-      desc = `### Worth: "${input}"\n\n${lines.join('\n')}`;
+      desc = `### ${input}\n\n${lines.join('\n')}`;
       if (matches.length > MAX_LIST) {
         desc += `\n\n_...and ${matches.length - MAX_LIST} more. Try a more specific term._`;
       }
