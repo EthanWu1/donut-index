@@ -12,7 +12,7 @@ function baseRate(x) {
 }
 
 const STACK_SIZE = 750;
-const STEPS = [-1000, -100, 100, 1000];
+const STEPS = [-10000, -1000, 1000, 10000];
 const MIN = 1;
 const MAX = 1000000;
 
@@ -80,7 +80,7 @@ function view(type, countRaw) {
         .setStyle(ButtonStyle.Secondary)),
     new ButtonBuilder()
       .setCustomId(`spawner:s:${t}:${x}`)
-      .setLabel('Set count')
+      .setEmoji('⚙️')
       .setStyle(ButtonStyle.Primary),
   );
   return { embeds: [embed], components: [typeRow, stepRow] };
