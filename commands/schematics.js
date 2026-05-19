@@ -3,11 +3,32 @@ const path = require('node:path');
 const {
   SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
   StringSelectMenuBuilder, EmbedBuilder, AttachmentBuilder, MessageFlags,
+  ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits,
 } = require('discord.js');
 const config = require('../config');
+const db = require('../lib/db');
 const { getSchematicIndex } = require('../jobs/schematics');
 const { errorEmbed } = require('../lib/embeds');
 const { deliverHoloprint } = require('./holoprint');
+
+// Strips the extension and filesystem-unsafe characters from a staff-typed
+// schematic filename, keeping spaces and wording.
+function cleanFileName(name) {
+  return String(name || '')
+    .replace(/\.litematic$/i, '')
+    .replace(/[\\/:*?"<>|\x00-\x1f]+/g, '')
+    .trim()
+    .slice(0, 80);
+}
+
+// The base filename (no extension) the bot serves for a schematic — a staff
+// override from the schematic_names table if set, else the original
+// .litematic attachment name.
+function effectiveBaseName(s) {
+  const override = db.getSchematicName(s.threadId);
+  if (override) return override;
+  return cleanFileName(s.litematicName || `${s.name}.litematic`) || 'schematic';
+}
 
 const PER_PAGE = 8;
 const TAG_RENDERS_DIR = path.join(__dirname, '..', 'assets', 'tag-renders');
@@ -123,6 +144,7 @@ function buildDetailView(threadId, tag, page) {
     .setTitle(s.name)
     .setDescription(s.body ? s.body.slice(0, 1500) : '_No description._');
   if (s.renderUrl) embed.setImage(s.renderUrl);
+  embed.addFields({ name: 'File', value: `\`${effectiveBaseName(s)}.litematic\`` });
 
   const files = [];
   for (const t of s.tags) {
@@ -137,6 +159,7 @@ function buildDetailView(threadId, tag, page) {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`schematics:dl:${s.threadId}`).setLabel('Download').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`schematics:holo:${s.threadId}`).setLabel('HoloPrint').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`schematics:rename:${s.threadId}:${tag}:${page}`).setLabel('Rename File').setStyle(ButtonStyle.Secondary),
   );
   if (guildId) {
     row.addComponents(
@@ -209,7 +232,9 @@ module.exports = {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       try {
         const { buffer, name } = await fetchSchematicFile(interaction.client, parts[2]);
-        return interaction.editReply({ files: [new AttachmentBuilder(buffer, { name })] });
+        const override = db.getSchematicName(parts[2]);
+        const fileName = override ? `${override}.litematic` : name;
+        return interaction.editReply({ files: [new AttachmentBuilder(buffer, { name: fileName })] });
       } catch (err) {
         return interaction.editReply({ embeds: [errorEmbed(err.message)] });
       }
@@ -218,12 +243,55 @@ module.exports = {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       try {
         const { buffer, name } = await fetchSchematicFile(interaction.client, parts[2]);
-        return await deliverHoloprint(interaction, buffer, name);
+        const override = db.getSchematicName(parts[2]);
+        return await deliverHoloprint(interaction, buffer, override ? `${override}.litematic` : name);
       } catch (err) {
         return interaction.editReply({ embeds: [errorEmbed(err.message)] });
       }
     }
+    if (parts[1] === 'rename') {
+      // Renames the file the bot serves (not the forum post). Staff only.
+      if (!interaction.memberPermissions
+        || !interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)) {
+        return interaction.reply({
+          embeds: [errorEmbed('You need the **Manage Server** permission to rename schematic files.')],
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+      const [, , threadId, tag, page] = parts;
+      const { schematics } = getSchematicIndex();
+      const s = schematics.find((x) => x.threadId === threadId);
+      const input = new TextInputBuilder()
+        .setCustomId('name')
+        .setLabel('File name (without .litematic)')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(80)
+        .setValue(s ? effectiveBaseName(s).slice(0, 80) : '');
+      const modal = new ModalBuilder()
+        .setCustomId(`schematics:rmodal:${threadId}:${tag}:${page}`)
+        .setTitle('Rename schematic file')
+        .addComponents(new ActionRowBuilder().addComponents(input));
+      return interaction.showModal(modal);
+    }
     return undefined;
+  },
+
+  // Modal: schematics:rmodal:<threadId>:<tag>:<page> — saves the file override.
+  async modal(interaction) {
+    const parts = interaction.customId.split(':');
+    if (parts[1] !== 'rmodal') return undefined;
+    const [, , threadId, tag, page] = parts;
+    const name = cleanFileName(interaction.fields.getTextInputValue('name'));
+    if (!name) {
+      return interaction.reply({
+        embeds: [errorEmbed('That name is empty once invalid characters are removed.')],
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    db.setSchematicName(threadId, name);
+    await interaction.deferUpdate();
+    return interaction.editReply(buildDetailView(threadId, tag, Number(page) || 1));
   },
 
   // Select menus: schematics:tag | schematics:pick:<tag>:<page>
