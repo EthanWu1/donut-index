@@ -19,12 +19,16 @@ const rest = new REST().setToken(config.token);
 
 (async () => {
   try {
+    // Register globally so the commands appear in every server the bot joins.
+    // Global commands can take up to ~1h to propagate.
+    await rest.put(Routes.applicationCommands(config.clientId), { body: commands });
+    console.log(`Registered ${commands.length} commands globally (propagation up to ~1h).`);
+
+    // If a dev GUILD_ID is set, clear that guild's own command set — otherwise
+    // its old guild-scoped copies show up duplicated next to the global ones.
     if (config.guildId) {
-      await rest.put(Routes.applicationGuildCommands(config.clientId, config.guildId), { body: commands });
-      console.log(`Registered ${commands.length} commands to guild ${config.guildId} (instant).`);
-    } else {
-      await rest.put(Routes.applicationCommands(config.clientId), { body: commands });
-      console.log(`Registered ${commands.length} commands globally (propagation up to ~1h).`);
+      await rest.put(Routes.applicationGuildCommands(config.clientId, config.guildId), { body: [] });
+      console.log(`Cleared leftover guild-scoped commands from ${config.guildId}.`);
     }
   } catch (err) {
     console.error('Command registration failed:', err);
