@@ -7,10 +7,17 @@ const { relativeTime } = require('../lib/format');
 
 const PER_PAGE = 12;
 const SORTS = ['newest', 'price_asc', 'price_desc'];
+const API_UNAVAILABLE = 'The DonutSMP API service is not available right now. Try again in a moment.';
 
 // Synchronous: reads the in-memory auction index, no API calls.
 function view(page, query, sort) {
-  const { listings, updatedAt } = getAuctionIndex();
+  const { listings, updatedAt, listingsError } = getAuctionIndex();
+  if (listingsError) {
+    return {
+      embeds: [errorEmbed(API_UNAVAILABLE)],
+      components: [],
+    };
+  }
   if (updatedAt === 0) {
     return {
       embeds: [errorEmbed('The auction index is still building. Try again in a few seconds.')],

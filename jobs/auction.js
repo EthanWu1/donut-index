@@ -61,9 +61,11 @@ let listings = [];
 let transactions = [];
 let updatedAt = 0;
 let building = false;
+let listingsError = null;
+let transactionsError = null;
 
 function getAuctionIndex() {
-  return { listings, transactions, updatedAt, building };
+  return { listings, transactions, updatedAt, building, listingsError, transactionsError };
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -78,6 +80,7 @@ async function rebuild() {
   if (building) return;
   building = true;
   try {
+    let nextTransactionsError = null;
     // Transactions first: only a few pages, and /price depends on it. The
     // listings scan below is hundreds of pages and would otherwise drain the
     // shared API rate-limit budget before the transactions fetch ever runs.
@@ -87,6 +90,7 @@ async function rebuild() {
       try {
         raw = await api.getAuctionTransactions(p);
       } catch (e) {
+        nextTransactionsError = e;
         console.warn(`[auction] txn page ${p}: ${e.message}`);
         break;
       }
@@ -98,12 +102,14 @@ async function rebuild() {
       await sleep(300);
     }
 
+    let nextListingsError = null;
     const live = [];
     for (let p = 1; p <= config.ahMaxPages; p++) {
       let raw;
       try {
         raw = await api.getAuctionList(p);
       } catch (e) {
+        nextListingsError = e;
         console.warn(`[auction] list page ${p}: ${e.message}`);
         break;
       }
@@ -117,9 +123,17 @@ async function rebuild() {
       await sleep(300);
     }
 
-    if (live.length > 0) listings = live;
+    transactionsError = nextTransactionsError;
     if (sold.length > 0) transactions = sold;
-    updatedAt = Date.now();
+
+    listingsError = nextListingsError;
+    if (!listingsError && live.length === 0) {
+      listingsError = new api.ApiError('Auction API returned no live listings');
+    }
+    if (!listingsError) {
+      listings = live;
+      updatedAt = Date.now();
+    }
     console.log(`[auction] indexed ${listings.length} listings, ${transactions.length} recent sales`);
   } finally {
     building = false;
