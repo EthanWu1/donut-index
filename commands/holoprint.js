@@ -57,7 +57,7 @@ async function deliverHoloprint(interaction, buffer, sourceName) {
     const embed = new EmbedBuilder()
       .setColor(config.colors.schematic)
       .setDescription([
-        '### HoloPrint pack ready',
+        '### Holoprint Ready',
         '',
         `Built a HoloPrint \`.mcpack\` from **${sourceName || base}**.`,
         meta,
