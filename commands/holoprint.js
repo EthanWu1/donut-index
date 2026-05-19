@@ -13,11 +13,13 @@ function formatCount(n) {
   return Number(n || 0).toLocaleString('en-US');
 }
 
+// Keeps the original litematic's spacing and wording — only strips the
+// extension and characters Discord / filesystems reject in a filename.
 function baseName(name) {
   return String(name || 'schematic')
     .replace(/\.litematic$/i, '')
-    .replace(/[^a-zA-Z0-9_-]+/g, '_')
-    .replace(/^_+|_+$/g, '')
+    .replace(/[\\/:*?"<>|\x00-\x1f]+/g, '')
+    .trim()
     .slice(0, 80) || 'schematic';
 }
 
@@ -57,7 +59,7 @@ async function deliverHoloprint(interaction, buffer, sourceName) {
     const embed = new EmbedBuilder()
       .setColor(config.colors.schematic)
       .setDescription([
-        '### Holoprint Ready',
+        '### HoloPrint Generated',
         '',
         `Built a HoloPrint \`.mcpack\` from **${sourceName || base}**.`,
         meta,

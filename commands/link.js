@@ -14,7 +14,7 @@ const TARGET = config.linkVerifyTarget;
 
 function checkRow() {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('link:check').setLabel('Check payment').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('link:check').setLabel('Verify').setStyle(ButtonStyle.Success),
   );
 }
 
@@ -26,7 +26,7 @@ function pendingEmbed(ign, code, note) {
     '',
     `> \`/pay ${TARGET} ${code}\``,
     '',
-    `Send **exactly** \`$${code}\` to **${TARGET}**, then press **Check payment**.`,
+    `Send **exactly** \`$${code}\` to **${TARGET}**, then press **Verify**.`,
   ];
   if (note) lines.push('', note);
   return new EmbedBuilder()

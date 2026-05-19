@@ -10,6 +10,7 @@ const LINES = [
   '`/rank`  ·  a player\'s placement on every leaderboard',
   '`/link`  ·  link your Discord account to your IGN',
   '`/unlink`  ·  remove that link',
+  '`/pay`  ·  watch the API for a payment between two players',
   '',
   '**Leaderboards & Market**',
   '`/leaderboard`  ·  top players for any stat',
@@ -20,6 +21,7 @@ const LINES = [
   '**Build & Schematics**',
   '`/schematics`  ·  browse the schematic library',
   '`/render`  ·  render a `.litematic` file to an image',
+  '`/holoprint`  ·  turn a `.litematic` into a HoloPrint pack',
   '`/spawner`  ·  spawner farm production calculator',
 ].join('\n');
 
