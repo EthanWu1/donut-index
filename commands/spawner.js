@@ -37,16 +37,19 @@ const TYPE_KEYS = Object.keys(SPAWNERS);
 function num(n) { return Math.round(n).toLocaleString('en-US'); }
 function clamp(n) { return Math.min(MAX, Math.max(MIN, Math.round(Number(n) || MIN))); }
 
-// Builds the embed + interactive controls for a type/count.
-function view(type, countRaw) {
+// Builds the embed + interactive controls for a type/count. `pilesRaw` of 0
+// (or blank) auto-splits by STACK_SIZE; a positive value pins the pile count.
+function view(type, countRaw, pilesRaw) {
   const t = SPAWNERS[type] ? type : 'skeleton';
   const sp = SPAWNERS[t];
   const x = clamp(countRaw);
 
-  const stacks = Math.max(1, Math.round(x / STACK_SIZE));
-  const each = x / stacks;
+  const reqPiles = Math.max(0, Math.round(Number(pilesRaw) || 0));
+  const autoPiles = Math.max(1, Math.round(x / STACK_SIZE));
+  const piles = reqPiles > 0 ? Math.min(x, reqPiles) : autoPiles;
+  const each = x / piles;
   const pileBase = baseRate(x);
-  const splitBase = baseRate(each) * stacks;
+  const splitBase = baseRate(each) * piles;
   const gain = pileBase > 0 ? splitBase / pileBase : 1;
 
   const titleEmoji = itemEmoji(`${t}_spawn_egg`) || itemEmoji(sp.drops[0].key) || '';
@@ -57,9 +60,13 @@ function view(type, countRaw) {
     lines.push(`${ic ? `${ic} ` : ''}**${d.name}:**  \`${num(perMin)}\`/min  ·  \`${num(perMin * 60)}\`/hour`);
   }
   lines.push('');
-  lines.push(stacks > 1
-    ? `Split into **${stacks}** stacks of ~${num(each)} spawners (about **${gain.toFixed(1)}x** the one-pile rate).`
-    : '_One pile is fine at this size; splitting only helps past ~1,000 spawners._');
+  if (piles > 1) {
+    lines.push(`Split into **${num(piles)}** piles of ~${num(each)} spawners`
+      + ` (about **${gain.toFixed(1)}x** the one-pile rate)`
+      + `${reqPiles > 0 ? ' — pile count set manually' : ' — auto-split'}.`);
+  } else {
+    lines.push('_One pile is fine at this size; splitting only helps past ~1,000 spawners._');
+  }
 
   const embed = new EmbedBuilder()
     .setColor(config.colors.worth)
@@ -68,18 +75,18 @@ function view(type, countRaw) {
 
   const typeRow = new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
-      .setCustomId(`spawner:t:${x}`)
+      .setCustomId(`spawner:t:${x}:${reqPiles}`)
       .setPlaceholder('Switch spawner type')
       .addOptions(TYPE_KEYS.map((k) => ({ label: SPAWNERS[k].label, value: k, default: k === t }))),
   );
   const stepRow = new ActionRowBuilder().addComponents(
     ...STEPS.map((s) =>
       new ButtonBuilder()
-        .setCustomId(`spawner:a:${t}:${x}:${s}`)
+        .setCustomId(`spawner:a:${t}:${x}:${reqPiles}:${s}`)
         .setLabel(`${s > 0 ? '+' : '−'}${num(Math.abs(s))}`)
         .setStyle(ButtonStyle.Secondary)),
     new ButtonBuilder()
-      .setCustomId(`spawner:s:${t}:${x}`)
+      .setCustomId(`spawner:s:${t}:${x}:${reqPiles}`)
       .setLabel('Set')
       .setStyle(ButtonStyle.Primary),
   );
@@ -99,43 +106,59 @@ module.exports = {
   async execute(interaction) {
     const count = interaction.options.getInteger('spawners') || 1000;
     const type = interaction.options.getString('type') || 'skeleton';
-    return interaction.reply(view(type, count));
+    return interaction.reply(view(type, count, 0));
   },
 
-  // Buttons: spawner:a:<type>:<count>:<delta> | spawner:s:<type>:<count>
+  // Buttons:
+  //   spawner:a:<type>:<count>:<piles>:<delta>  — step the spawner count
+  //   spawner:s:<type>:<count>:<piles>          — open the Set modal
   async button(interaction) {
     const p = interaction.customId.split(':');
     if (p[1] === 'a') {
-      return interaction.update(view(p[2], clamp(Number(p[3]) + Number(p[4]))));
+      return interaction.update(view(p[2], clamp(Number(p[3]) + Number(p[5])), p[4]));
     }
     if (p[1] === 's') {
-      const input = new TextInputBuilder()
+      const reqPiles = Number(p[4]) || 0;
+      const countInput = new TextInputBuilder()
         .setCustomId('count')
         .setLabel('Number of spawners')
         .setStyle(TextInputStyle.Short)
         .setRequired(true)
         .setMaxLength(7)
-        .setPlaceholder(String(p[3] || 1000));
+        .setValue(String(p[3] || 1000));
+      const pilesInput = new TextInputBuilder()
+        .setCustomId('piles')
+        .setLabel('Number of piles (blank = auto-split)')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false)
+        .setMaxLength(7);
+      if (reqPiles > 0) pilesInput.setValue(String(reqPiles));
       const modal = new ModalBuilder()
         .setCustomId(`spawner:m:${p[2]}`)
-        .setTitle('Set spawner count')
-        .addComponents(new ActionRowBuilder().addComponents(input));
+        .setTitle('Set spawners and piles')
+        .addComponents(
+          new ActionRowBuilder().addComponents(countInput),
+          new ActionRowBuilder().addComponents(pilesInput),
+        );
       return interaction.showModal(modal);
     }
+    return undefined;
   },
 
-  // Select menu: spawner:t:<count> — chosen value is the new type.
+  // Select menu: spawner:t:<count>:<piles> — chosen value is the new type.
   async selectMenu(interaction) {
     const p = interaction.customId.split(':');
     if (p[1] === 't') {
-      return interaction.update(view(interaction.values[0], Number(p[2])));
+      return interaction.update(view(interaction.values[0], Number(p[2]), p[3]));
     }
+    return undefined;
   },
 
-  // Modal: spawner:m:<type> — input is the new count.
+  // Modal: spawner:m:<type> — count (required) + piles (blank = auto-split).
   async modal(interaction) {
     const p = interaction.customId.split(':');
     const count = clamp(interaction.fields.getTextInputValue('count').replace(/[^0-9]/g, ''));
-    return interaction.update(view(p[2], count));
+    const piles = interaction.fields.getTextInputValue('piles').replace(/[^0-9]/g, '');
+    return interaction.update(view(p[2], count, piles || 0));
   },
 };
