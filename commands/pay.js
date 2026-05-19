@@ -36,11 +36,11 @@ function payView(w) {
     '### Payment Watch',
     '',
     `${emoji ? `${emoji} ` : ''}**Amount:** ${amount}`,
-    `**From:** \`${w.payer_ign}\`${w.payer_id ? ` · <@${w.payer_id}>` : ''}`,
+    `**From:** \`${w.payer_ign}\``,
     `**To:** \`${w.receiver_ign}\``,
+    '',
+    s.text,
   ];
-  if (w.reason) lines.push(`**For:** ${w.reason}`);
-  lines.push('', s.text);
 
   const embed = new EmbedBuilder()
     .setColor(s.color)
@@ -61,23 +61,17 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('pay')
     .setDescription('Watch the DonutSMP API for a payment between two players')
-    .addUserOption((o) =>
-      o.setName('payer').setDescription('The Discord user sending the payment').setRequired(true))
     .addStringOption((o) =>
-      o.setName('payer_ign').setDescription("Sender's Minecraft IGN").setRequired(true).setMaxLength(16))
+      o.setName('payer').setDescription("Sender's Minecraft IGN").setRequired(true).setMaxLength(16))
     .addStringOption((o) =>
       o.setName('receiver').setDescription("Receiver's Minecraft IGN").setRequired(true).setMaxLength(16))
     .addStringOption((o) =>
-      o.setName('amount').setDescription('Amount to watch for (e.g. 500k, 1m, 250000)').setRequired(true))
-    .addStringOption((o) =>
-      o.setName('reason').setDescription('Optional label for this payment').setRequired(false)),
+      o.setName('amount').setDescription('Amount to watch for (e.g. 500k, 1m, 250000)').setRequired(true)),
 
   async execute(interaction) {
     await interaction.deferReply();
-    const payer = interaction.options.getUser('payer');
-    const payerIgn = interaction.options.getString('payer_ign').trim();
+    const payerIgn = interaction.options.getString('payer').trim();
     const receiverIgn = interaction.options.getString('receiver').trim();
-    const reason = (interaction.options.getString('reason') || '').trim().slice(0, 200) || null;
     const amount = parseAmount(interaction.options.getString('amount'));
 
     if (!amount || amount <= 0) {
@@ -115,11 +109,11 @@ module.exports = {
       channelId: null,
       messageId: null,
       creatorId: interaction.user.id,
-      payerId: payer ? payer.id : null,
+      payerId: null,
       payerIgn,
       receiverIgn,
       amount,
-      reason,
+      reason: null,
       payerStart,
       receiverStart,
       createdAt: now,
