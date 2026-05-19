@@ -128,7 +128,7 @@ module.exports = {
         .setValue(String(p[3] || 1000));
       const pilesInput = new TextInputBuilder()
         .setCustomId('piles')
-        .setLabel('Number of piles (blank = auto-split)')
+        .setLabel('Number of piles')
         .setStyle(TextInputStyle.Short)
         .setRequired(false)
         .setMaxLength(7);
