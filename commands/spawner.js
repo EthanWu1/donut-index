@@ -24,12 +24,17 @@ const SPAWNERS = {
   ] },
   cow: { label: 'Cow', drops: [{ name: 'Raw Beef', key: 'beef', mult: 1.5 }] },
   pig: { label: 'Pig', drops: [{ name: 'Raw Porkchop', key: 'porkchop', mult: 1.5 }] },
+  zombie: { label: 'Zombie', drops: [{ name: 'Rotten Flesh', key: 'rotten_flesh', mult: 1.5 }] },
   creeper: { label: 'Creeper', drops: [{ name: 'Gunpowder', key: 'gunpowder', mult: 2 }] },
   spider: { label: 'Spider', drops: [
     { name: 'String', key: 'string', mult: 3 },
     { name: 'Spider Eyes', key: 'spider_eye', mult: 1 },
   ] },
-  blaze: { label: 'Blaze', drops: [{ name: 'Blaze Powder', key: 'blaze_powder', mult: 5.5 }] },
+  blaze: { label: 'Blaze', drops: [{ name: 'Blaze Powder', key: 'blaze_powder', mult: 5 }] },
+  zombified_piglin: { label: 'Zombified Piglin', drops: [
+    { name: 'Gold Nuggets', key: 'gold_nugget', mult: 1.5 },
+    { name: 'Rotten Flesh', key: 'rotten_flesh', mult: 3 },
+  ] },
   iron_golem: { label: 'Iron Golem', drops: [{ name: 'Iron Ingots', key: 'iron_ingot', mult: 1 }] },
 };
 const TYPE_KEYS = Object.keys(SPAWNERS);
