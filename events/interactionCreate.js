@@ -1,5 +1,6 @@
 const { Events, MessageFlags } = require('discord.js');
 const { errorEmbed } = require('../lib/embeds');
+const api = require('../lib/api');
 const db = require('../lib/db');
 
 // Logs an error and fully expands a Discord API rawError (e.g. the exact
@@ -11,6 +12,36 @@ function logError(tag, err) {
   }
   if (err && err.requestBody) {
     console.error(`${tag} requestBody:`, JSON.stringify(err.requestBody, null, 2));
+  }
+}
+
+function userMessageForError(err, fallback) {
+  if (err && err.userMessage) return err.userMessage;
+  if (err instanceof api.RateLimitedError) {
+    return 'DonutSMP API is rate-limited right now. Try again shortly.';
+  }
+  if (err instanceof api.NotFoundError) {
+    return 'No DonutSMP player or resource was found.';
+  }
+  if (err instanceof api.ApiError) {
+    return 'The DonutSMP API service is not available right now. Try again in a moment.';
+  }
+  return fallback;
+}
+
+function errorPayload(err, fallback) {
+  return {
+    embeds: [errorEmbed(userMessageForError(err, fallback))],
+    flags: MessageFlags.Ephemeral,
+  };
+}
+
+async function respondWithError(interaction, err, fallback) {
+  const payload = errorPayload(err, fallback);
+  if (interaction.deferred || interaction.replied) {
+    await interaction.editReply(payload).catch(() => {});
+  } else {
+    await interaction.reply(payload).catch(() => {});
   }
 }
 
@@ -31,9 +62,7 @@ module.exports = {
         await command.execute(interaction);
       } catch (err) {
         logError(`[command ${interaction.commandName}]`, err);
-        const payload = { embeds: [errorEmbed(err.userMessage || 'Something went wrong.')], flags: MessageFlags.Ephemeral };
-        if (interaction.deferred || interaction.replied) await interaction.editReply(payload).catch(() => {});
-        else await interaction.reply(payload).catch(() => {});
+        await respondWithError(interaction, err, 'Something went wrong.');
       }
       return;
     }
@@ -53,7 +82,7 @@ module.exports = {
         try { await command.selectMenu(interaction); }
         catch (err) {
           logError(`[select ${interaction.customId}]`, err);
-          await interaction.reply({ embeds: [errorEmbed('Menu action failed.')], flags: MessageFlags.Ephemeral }).catch(() => {});
+          await respondWithError(interaction, err, 'Menu action failed.');
         }
       }
       return;
@@ -66,7 +95,7 @@ module.exports = {
         try { await command.modal(interaction); }
         catch (err) {
           logError(`[modal ${interaction.customId}]`, err);
-          await interaction.reply({ embeds: [errorEmbed('Action failed.')], flags: MessageFlags.Ephemeral }).catch(() => {});
+          await respondWithError(interaction, err, 'Action failed.');
         }
       }
       return;
@@ -79,7 +108,7 @@ module.exports = {
         try { await command.button(interaction); }
         catch (err) {
           logError(`[button ${interaction.customId}]`, err);
-          await interaction.reply({ embeds: [errorEmbed('Button action failed.')], flags: MessageFlags.Ephemeral }).catch(() => {});
+          await respondWithError(interaction, err, 'Button action failed.');
         }
       }
     }

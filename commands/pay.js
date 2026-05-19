@@ -45,7 +45,6 @@ function payView(w) {
   const embed = new EmbedBuilder()
     .setColor(s.color)
     .setDescription(lines.join('\n'))
-    .setFooter({ text: `Watch ${w.id}` })
     .setTimestamp(w.created_at);
 
   const components = [];
