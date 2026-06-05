@@ -1,5 +1,21 @@
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const TMP_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'donutdex-auction-failure-'));
+const TMP = path.join(TMP_DIR, 'auction-failure.sqlite');
+process.env.DONUT_DB_PATH = TMP;
+
+function cleanup() {
+  for (const suffix of ['', '-wal', '-shm']) {
+    try { fs.unlinkSync(TMP + suffix); } catch {}
+  }
+  try { fs.rmdirSync(TMP_DIR); } catch {}
+}
+cleanup();
+test.after(cleanup);
 
 const api = require('../lib/api');
 const config = require('../config');
