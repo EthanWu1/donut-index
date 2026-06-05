@@ -24,11 +24,16 @@ const rest = new REST().setToken(config.token);
     await rest.put(Routes.applicationCommands(config.clientId), { body: commands });
     console.log(`Registered ${commands.length} commands globally (propagation up to ~1h).`);
 
-    // If a dev GUILD_ID is set, clear that guild's own command set — otherwise
-    // its old guild-scoped copies show up duplicated next to the global ones.
+    // If GUILD_ID is set, also register guild-scoped commands so updates are
+    // available immediately while global commands propagate.
     if (config.guildId) {
-      await rest.put(Routes.applicationGuildCommands(config.clientId, config.guildId), { body: [] });
-      console.log(`Cleared leftover guild-scoped commands from ${config.guildId}.`);
+      if (process.env.CLEAR_GUILD_COMMANDS === 'true') {
+        await rest.put(Routes.applicationGuildCommands(config.clientId, config.guildId), { body: [] });
+        console.log(`Cleared guild-scoped commands from ${config.guildId}.`);
+      } else {
+        await rest.put(Routes.applicationGuildCommands(config.clientId, config.guildId), { body: commands });
+        console.log(`Registered ${commands.length} commands to guild ${config.guildId} for immediate availability.`);
+      }
     }
   } catch (err) {
     console.error('Command registration failed:', err);
