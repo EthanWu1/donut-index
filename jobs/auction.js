@@ -54,25 +54,110 @@ function normalizeEnchantId(v) {
     .toLowerCase();
 }
 
+const ENCHANTMENT_FIELDS = new Set([
+  'enchantments',
+  'enchants',
+  'stored_enchantments',
+  'stored_enchants',
+  'storedenchantments',
+]);
+const NON_ENCHANTMENT_FIELDS = new Set([
+  'trim',
+  'components',
+  'display',
+  'lore',
+  'attributes',
+  'attribute_modifiers',
+  'unbreakable',
+  'repair_cost',
+  'custom_model_data',
+]);
+
+function normalizeFieldKey(v) {
+  return normalizeEnchantId(v).replace(/[-\s]+/g, '_');
+}
+
+function ignoredEnchantId(id) {
+  const key = normalizeFieldKey(id);
+  return !key || ENCHANTMENT_FIELDS.has(key) || NON_ENCHANTMENT_FIELDS.has(key);
+}
+
+function numericValue(v) {
+  if (v && typeof v === 'object' && !Array.isArray(v) && Object.prototype.hasOwnProperty.call(v, 'value')) {
+    return numericValue(v.value);
+  }
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function hasLevelLike(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+  return ['level', 'lvl', 'value'].some((key) =>
+    Object.prototype.hasOwnProperty.call(v, key) && numericValue(v[key]) !== null);
+}
+
+function readLevel(v) {
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    for (const key of ['level', 'lvl', 'value']) {
+      if (Object.prototype.hasOwnProperty.call(v, key)) {
+        const n = numericValue(v[key]);
+        if (n !== null) return n;
+      }
+    }
+  }
+  const n = numericValue(v);
+  return n !== null ? n : 1;
+}
+
 function readEnchantments(item) {
   const out = [];
   const push = (id, level) => {
     const clean = normalizeEnchantId(id);
-    if (!clean) return;
-    const lvl = Number(level ?? 1) || 1;
+    if (ignoredEnchantId(clean)) return;
+    const lvl = readLevel(level ?? 1);
     out.push({ id: clean, name: titleCase(clean), level: lvl });
   };
 
-  for (const key of ['enchantments', 'enchants', 'stored_enchantments']) {
-    const value = item && item[key];
+  const parse = (value, hintedId = null) => {
     if (Array.isArray(value)) {
       for (const e of value) {
         if (typeof e === 'string') push(e, 1);
-        else if (e && typeof e === 'object') push(e.id || e.name || e.key || e.type, e.level || e.lvl);
+        else parse(e);
       }
-    } else if (value && typeof value === 'object') {
-      for (const [id, level] of Object.entries(value)) push(id, level);
+      return;
     }
+    if (value === null || value === undefined) return;
+    if (typeof value === 'number' || typeof value === 'string') {
+      if (hintedId) push(hintedId, value);
+      else if (typeof value === 'string') push(value, 1);
+      return;
+    }
+    if (typeof value !== 'object') return;
+
+    const directId = value.id || value.name || value.key || value.enchantment
+      || (hasLevelLike(value) ? value.type : null);
+    if (directId && !ignoredEnchantId(directId)) {
+      push(directId, value.level ?? value.lvl ?? value.value ?? 1);
+      return;
+    }
+    if (hintedId && hasLevelLike(value)) {
+      push(hintedId, value);
+      return;
+    }
+
+    for (const [id, nested] of Object.entries(value)) {
+      const key = normalizeFieldKey(id);
+      if (key === 'trim') continue;
+      if (ENCHANTMENT_FIELDS.has(key)) parse(nested);
+      else if (!ignoredEnchantId(key) && (typeof nested === 'number' || typeof nested === 'string' || hasLevelLike(nested))) {
+        parse(nested, id);
+      }
+    }
+  };
+
+  for (const key of ['enchantments', 'enchants', 'stored_enchantments', 'storedEnchantments', 'Enchantments', 'StoredEnchantments']) {
+    const value = item && item[key];
+    if (value !== undefined) parse(value);
   }
 
   const seen = new Set();

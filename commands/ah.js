@@ -3,6 +3,8 @@ const {
 } = require('discord.js');
 const api = require('../lib/api');
 const { getAuctionIndex, normalizeListing, extractList } = require('../jobs/auction');
+const config = require('../config');
+const db = require('../lib/db');
 const { auctionEmbed, errorEmbed } = require('../lib/embeds');
 const { relativeTime } = require('../lib/format');
 
@@ -16,6 +18,71 @@ async function liveSearch(page, query) {
   return extractList(raw)
     .filter((it) => it && typeof it === 'object')
     .map(normalizeListing);
+}
+
+function listingId(it) {
+  return [
+    it && it.key,
+    it && it.name,
+    it && it.seller,
+    it && it.price,
+    it && it.amount,
+    it && it.enchantText,
+  ].join('|');
+}
+
+function mergeListings(...groups) {
+  const seen = new Set();
+  const out = [];
+  for (const group of groups) {
+    for (const it of group || []) {
+      if (!it || typeof it !== 'object') continue;
+      const id = listingId(it);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(it);
+    }
+  }
+  return out;
+}
+
+function cachedAuctionState() {
+  const index = getAuctionIndex();
+  const fallback = db.getAuctionCache(config.ahFallbackMs);
+  const listings = mergeListings(index.listings, fallback && fallback.listings);
+  const fallbackOnly = (!index.updatedAt || !(index.listings || []).length)
+    && fallback && fallback.listings.length > 0;
+  return {
+    ...index,
+    listings,
+    updatedAt: index.updatedAt || (fallback && fallback.updatedAt) || 0,
+    stale: Boolean(index.stale || fallbackOnly),
+  };
+}
+
+function matchesListing(it, query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return true;
+  return `${it.searchText || ''} ${it.name || ''} ${it.key || ''} ${it.enchantText || ''}`
+    .toLowerCase()
+    .includes(q);
+}
+
+function ahSuggestions(query, limit = 25) {
+  const q = String(query || '').trim().toLowerCase();
+  const rows = [];
+  const seen = new Set();
+  for (const it of cachedAuctionState().listings) {
+    const name = String(it.name || '').trim();
+    if (!name || seen.has(name.toLowerCase())) continue;
+    if (!matchesListing(it, q)) continue;
+    seen.add(name.toLowerCase());
+    const hay = `${it.searchText || ''} ${it.name || ''} ${it.key || ''}`.toLowerCase();
+    const starts = hay.startsWith(q) || name.toLowerCase().startsWith(q) || String(it.key || '').startsWith(q);
+    rows.push({ name, value: name, score: starts ? 0 : 1 });
+  }
+  rows.sort((a, b) => a.score - b.score || a.name.localeCompare(b.name));
+  return rows.slice(0, limit).map(({ name, value }) => ({ name, value }));
 }
 
 function controls(safePage, totalPages, sort, query) {
@@ -40,8 +107,8 @@ function controls(safePage, totalPages, sort, query) {
 async function view(page, query, sort) {
   const {
     listings, updatedAt, listingsError, stale,
-  } = getAuctionIndex();
-  if (query) {
+  } = cachedAuctionState();
+  if (query && updatedAt === 0) {
     try {
       const live = await liveSearch(page, query);
       if (live && live.length > 0) {
@@ -57,7 +124,7 @@ async function view(page, query, sort) {
         return { embeds: [auctionEmbed(query, pageItems, footer)], components: controls(safePage, totalPages, sort, query) };
       }
     } catch {
-      // Fall through to cached/stale index.
+      // Fall through to the normal unavailable/building messages.
     }
   }
   if (listingsError && updatedAt === 0) {
@@ -73,9 +140,8 @@ async function view(page, query, sort) {
   let items = listings;
   let source = stale ? 'stale fallback' : 'cached index';
   if (query) {
-    source = stale ? 'stale fallback' : 'cached fallback';
-    const q = query.toLowerCase();
-    items = items.filter((it) => (it.searchText || it.name || '').toLowerCase().includes(q));
+    source = stale ? 'stale fallback' : 'global index';
+    items = items.filter((it) => matchesListing(it, query));
   }
 
   if (sort === 'price_asc') items = items.slice().sort((a, b) => a.price - b.price);
@@ -101,18 +167,7 @@ module.exports = {
       o.setName('item').setDescription('Search for items containing this text').setAutocomplete(true)),
 
   async autocomplete(interaction) {
-    const { listings } = getAuctionIndex();
-    const q = interaction.options.getFocused().toLowerCase();
-    const seen = new Set();
-    const out = [];
-    for (const it of listings) {
-      if (out.length >= 25) break;
-      if ((it.searchText || it.name || '').toLowerCase().includes(q) && !seen.has(it.name)) {
-        seen.add(it.name);
-        out.push({ name: it.name, value: it.name });
-      }
-    }
-    await interaction.respond(out);
+    await interaction.respond(ahSuggestions(interaction.options.getFocused(), 25));
   },
 
   async execute(interaction) {
@@ -132,4 +187,5 @@ module.exports = {
   },
 
   view,
+  ahSuggestions,
 };
