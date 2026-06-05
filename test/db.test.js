@@ -69,17 +69,30 @@ test('auction cache returns only useful recent fallback data', () => {
   assert.strictEqual(db.getAuctionCache(6 * 3600_000, now), null);
 });
 
-test('auction price history compacts old raw points into daily summaries', () => {
+test('auction price history records and compacts one-item prices', () => {
   const day = 86400_000;
   const now = Date.now();
-  db.recordAuctionPricePoint({ key: 'stone', name: 'Stone', lowestStackPrice: 640 }, now - 40 * day);
-  db.recordAuctionPricePoint({ key: 'stone', name: 'Stone', lowestStackPrice: 512 }, now - 40 * day + 3600_000);
-  db.recordAuctionPricePoint({ key: 'stone', name: 'Stone', lowestStackPrice: 704 }, now - 2 * day);
+  db.recordAuctionPricePoint({ key: 'stone', name: 'Stone', unitPrice: 10 }, now - 40 * day);
+  db.recordAuctionPricePoint({ key: 'stone', name: 'Stone', unitPrice: 8 }, now - 40 * day + 3600_000);
+  db.recordAuctionPricePoint({ key: 'stone', name: 'Stone', unitPrice: 11 }, now - 2 * day);
 
   db.compactAuctionHistory(now, 30 * day);
 
   const history = db.auctionPriceHistory('stone', 0);
-  assert.ok(history.some((p) => p.source === 'daily' && p.lowestStackPrice === 512));
-  assert.ok(history.some((p) => p.source === 'raw' && p.lowestStackPrice === 704));
-  assert.ok(!history.some((p) => p.source === 'raw' && p.lowestStackPrice === 640));
+  assert.ok(history.some((p) => p.source === 'unit_daily' && p.unitPrice === 8));
+  assert.ok(history.some((p) => p.source === 'unit_raw' && p.unitPrice === 11));
+  assert.ok(!history.some((p) => p.source === 'unit_raw' && p.unitPrice === 10));
+});
+
+test('auction snapshots average one-item prices from the cheapest listings', () => {
+  const now = Date.now();
+  db.recordAuctionPriceSnapshot([
+    { key: 'diamond', name: 'Diamond', amount: 64, price: 6400 },
+    { key: 'diamond', name: 'Diamond', amount: 1, price: 120 },
+    { key: 'diamond', name: 'Diamond', amount: 1, price: 50000 },
+  ], now);
+
+  const rows = db.auctionPriceHistory('diamond', 0);
+  assert.strictEqual(rows.length, 1);
+  assert.strictEqual(rows[0].unitPrice, 110);
 });

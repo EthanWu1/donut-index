@@ -23,8 +23,8 @@ const history = require('../commands/history');
 
 test('/history renders an auction price chart attachment', async () => {
   const now = Date.now();
-  db.recordAuctionPricePoint({ key: 'stone', name: 'Stone', lowestStackPrice: 640 }, now - 3600_000);
-  db.recordAuctionPricePoint({ key: 'stone', name: 'Stone', lowestStackPrice: 512 }, now);
+  db.recordAuctionPricePoint({ key: 'stone', name: 'Stone', unitPrice: 10 }, now - 3600_000);
+  db.recordAuctionPricePoint({ key: 'stone', name: 'Stone', unitPrice: 8 }, now);
 
   const calls = [];
   const interaction = {
@@ -39,11 +39,12 @@ test('/history renders an auction price chart attachment', async () => {
   const payload = calls[1][1];
   assert.strictEqual(payload.files.length, 1);
   assert.match(payload.embeds[0].data.description, /Stone/);
+  assert.match(payload.embeds[0].data.description, /one-item/i);
   assert.strictEqual(payload.embeds[0].data.image.url, 'attachment://history.png');
 });
 
 test('/history autocomplete suggests history and current auction items', async () => {
-  db.recordAuctionPricePoint({ key: 'stone', name: 'Stone', lowestStackPrice: 640 }, Date.now());
+  db.recordAuctionPricePoint({ key: 'stone', name: 'Stone', unitPrice: 10 }, Date.now());
   const original = auction.getAuctionIndex;
   auction.getAuctionIndex = () => ({
     listings: [{ name: 'Diamond Sword', key: 'diamond_sword', stackPrice: 3200 }],
@@ -64,12 +65,13 @@ test('/history autocomplete suggests history and current auction items', async (
   }
 });
 
-test('/history renders from the best current auction listing when no history exists', async () => {
+test('/history renders from averaged one-item current auction listings when no history exists', async () => {
   const original = auction.getAuctionIndex;
   auction.getAuctionIndex = () => ({
     listings: [
-      { name: 'Beacon', key: 'beacon', amount: 1, price: 5000, stackPrice: 320000 },
-      { name: 'Beacon', key: 'beacon', amount: 1, price: 4000, stackPrice: 256000 },
+      { name: 'Beacon', key: 'beacon', amount: 64, price: 6400, stackPrice: 6400 },
+      { name: 'Beacon', key: 'beacon', amount: 1, price: 120, stackPrice: 7680 },
+      { name: 'Beacon', key: 'beacon', amount: 1, price: 50000, stackPrice: 3200000 },
     ],
     transactions: [],
     updatedAt: Date.now(),
@@ -88,6 +90,7 @@ test('/history renders from the best current auction listing when no history exi
     assert.strictEqual(payload.files.length, 1);
     assert.match(payload.embeds[0].data.description, /Beacon/);
     assert.match(payload.embeds[0].data.footer.text, /current AH data/i);
+    assert.strictEqual(history.historyRowsFor('beacon').rows[0].unitPrice, 110);
   } finally {
     auction.getAuctionIndex = original;
   }
@@ -98,7 +101,7 @@ test('/history falls back to recent persisted auction cache when memory is empty
   auction.getAuctionIndex = () => ({ listings: [], transactions: [], updatedAt: 0 });
   db.saveAuctionCache({
     listings: [
-      { name: 'Ancient Debris', key: 'ancient_debris', amount: 1, price: 5000, stackPrice: 320000 },
+      { name: 'Ancient Debris', key: 'ancient_debris', amount: 64, price: 6400, stackPrice: 6400 },
     ],
     transactions: [],
     updatedAt: Date.now(),
@@ -108,6 +111,7 @@ test('/history falls back to recent persisted auction cache when memory is empty
     const result = history.historyRowsFor('ancient debris');
     assert.strictEqual(result.rows.length, 1);
     assert.strictEqual(result.name, 'Ancient Debris');
+    assert.strictEqual(result.rows[0].unitPrice, 100);
     assert.match(result.footer, /current AH data/i);
   } finally {
     auction.getAuctionIndex = original;

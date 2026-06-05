@@ -25,12 +25,12 @@ function loadPrices() {
   catch { return {}; }
 }
 
-function stackPriceForListing(listing) {
-  const direct = Number(listing && listing.stackPrice);
-  if (direct > 0) return Math.ceil(direct);
+function unitPriceForListing(listing) {
   const price = Number(listing && listing.price) || 0;
   const amount = Math.max(1, Number(listing && listing.amount) || 1);
-  return price > 0 ? Math.ceil((price / amount) * 64) : 0;
+  if (price > 0) return price / amount;
+  const stackPrice = Number(listing && listing.stackPrice);
+  return stackPrice > 0 ? stackPrice / 64 : 0;
 }
 
 function listingId(it) {
@@ -100,8 +100,8 @@ function bestCurrentListing(input) {
   const key = normalizeItem(input);
   const { listings = [], updatedAt = 0 } = currentAuctionState();
   const candidates = listings
-    .map((listing) => ({ listing, stackPrice: stackPriceForListing(listing) }))
-    .filter((row) => row.stackPrice > 0);
+    .map((listing) => ({ listing, unitPrice: unitPriceForListing(listing) }))
+    .filter((row) => row.unitPrice > 0);
   const exact = candidates.filter(({ listing }) =>
     String(listing.key || '').toLowerCase() === key
     || String(listing.name || '').toLowerCase() === q);
@@ -109,12 +109,15 @@ function bestCurrentListing(input) {
     String(listing.key || '').toLowerCase().includes(key)
     || String(listing.name || '').toLowerCase().includes(q));
   if (fuzzy.length === 0) return null;
-  fuzzy.sort((a, b) => a.stackPrice - b.stackPrice);
+  fuzzy.sort((a, b) => a.unitPrice - b.unitPrice);
   const best = fuzzy[0];
+  const averaged = db.averageCheapestUnitPrice(fuzzy.map((row) => row.unitPrice));
   return {
     ts: updatedAt || Date.now(),
     name: best.listing.name || input,
-    lowestStackPrice: best.stackPrice,
+    unitPrice: averaged.unitPrice,
+    lowestStackPrice: averaged.unitPrice,
+    samples: averaged.samples,
   };
 }
 
@@ -155,16 +158,16 @@ module.exports = {
     if (rows.length < 1) {
       return interaction.editReply({ embeds: [errorEmbed(`Not enough auction history for **${input}** yet.`)] });
     }
-    const points = rows.map((r) => ({ ts: r.ts, value: r.lowestStackPrice }));
+    const points = rows.map((r) => ({ ts: r.ts, value: r.unitPrice ?? r.lowestStackPrice }));
     const png = renderChart(points, {
       money: true,
       title: `${name} AH History`,
-      subtitle: 'Lowest known 64-item stack price',
+      subtitle: 'Average one-item AH price',
     });
     const file = new AttachmentBuilder(png, { name: 'history.png' });
     const embed = new EmbedBuilder()
       .setColor(config.colors.history)
-      .setDescription(`### ${name} AH History\n\nLowest known 64-item stack price.`)
+      .setDescription(`### ${name} AH History\n\nAverage one-item AH price.`)
       .setImage('attachment://history.png')
       .setFooter({ text: footer })
       .setTimestamp();

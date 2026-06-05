@@ -81,3 +81,19 @@ test('chart marker label layout avoids overlapping numbers', () => {
     }
   }
 });
+
+test('chart markers can be throttled for dense stats charts', () => {
+  const markers = chartMarkers([
+    { ts: 1, value: 100 },
+    { ts: 2, value: 180 },
+    { ts: 3, value: 90 },
+    { ts: 4, value: 220 },
+    { ts: 5, value: 120 },
+    { ts: 6, value: 260 },
+    { ts: 7, value: 140 },
+    { ts: 8, value: 300 },
+  ], { maxMarkers: 4 });
+
+  assert.ok(markers.length <= 4);
+  assert.ok(markers.some((m) => m.kind === 'latest'));
+});

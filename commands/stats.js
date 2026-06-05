@@ -110,6 +110,7 @@ function buildHistoryView(ign, statKey, range) {
   const chartOpts = {
     money: ['money', 'spent', 'made'].includes(stat.key),
     duration: isPlaytime,
+    maxMarkers: 5,
   };
   const png = renderChart(points, {
     ...chartOpts,
