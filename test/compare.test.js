@@ -84,7 +84,7 @@ test('comparisonEntries expose formatted values and winners for scoreboard rende
   assert.strictEqual(broken.diffLabel, '0');
 });
 
-test('/compare fetches both players and replies with a comparison embed', async () => {
+test('/compare fetches both players and replies with a plain comparison image', async () => {
   const original = api.getStats;
   api.getStats = async (ign) => ({ stats: ign === 'Alice' ? statsA : statsB });
   try {
@@ -93,12 +93,9 @@ test('/compare fetches both players and replies with a comparison embed', async 
 
     assert.strictEqual(i.calls[0][0], 'deferReply');
     assert.strictEqual(i.calls[1][0], 'editReply');
-    const embed = i.calls[1][1].embeds[0].data;
-    assert.match(embed.description, /Alice vs Bob/);
-    assert.match(embed.description, /Balance/);
-    assert.match(embed.description, /Bob by/);
+    assert.match(i.calls[1][1].content, /Alice vs Bob/);
+    assert.strictEqual(i.calls[1][1].embeds, undefined);
     assert.strictEqual(i.calls[1][1].files.length, 1);
-    assert.strictEqual(i.calls[1][1].embeds[0].data.image.url, 'attachment://compare.png');
   } finally {
     api.getStats = original;
   }

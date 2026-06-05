@@ -38,3 +38,30 @@ test('! prefix ignores slash-only commands', async () => {
 
   assert.strictEqual(replies.length, 0);
 });
+
+test('! prefix falls back to channel send when replying is blocked', async () => {
+  const sent = [];
+  const message = {
+    content: '!stats PlayerOne',
+    author: { bot: false },
+    client: {
+      commands: new Map([['stats', {
+        async execute(interaction) {
+          await interaction.reply({ content: 'ok' });
+        },
+      }]]),
+    },
+    async reply() {
+      const err = new Error('Missing Permissions');
+      err.code = 50013;
+      throw err;
+    },
+    channel: {
+      async send(payload) { sent.push(payload); },
+    },
+  };
+
+  await messageCreate.execute(message);
+
+  assert.strictEqual(sent[0].content, 'ok');
+});

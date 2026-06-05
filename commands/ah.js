@@ -18,6 +18,25 @@ async function liveSearch(page, query) {
     .map(normalizeListing);
 }
 
+function controls(safePage, totalPages, sort, query) {
+  const enc = encodeURIComponent(query || '');
+  const sortRow = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`ah:sort:${safePage}:${enc}`)
+      .setPlaceholder('Sort order')
+      .addOptions(
+        { label: 'Newest', value: 'newest', default: sort === 'newest' },
+        { label: 'Low to High', value: 'price_asc', default: sort === 'price_asc' },
+        { label: 'High to Low', value: 'price_desc', default: sort === 'price_desc' },
+      ),
+  );
+  const navRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`ah:page:${safePage - 1}:${sort}:${enc}`).setLabel('<').setStyle(ButtonStyle.Secondary).setDisabled(safePage <= 1),
+    new ButtonBuilder().setCustomId(`ah:page:${safePage + 1}:${sort}:${enc}`).setLabel('>').setStyle(ButtonStyle.Secondary).setDisabled(safePage >= totalPages),
+  );
+  return [sortRow, navRow];
+}
+
 async function view(page, query, sort) {
   const {
     listings, updatedAt, listingsError, stale,
@@ -30,10 +49,12 @@ async function view(page, query, sort) {
         const safePage = Math.min(Math.max(1, page), totalPages);
         const sorted = sort === 'price_desc'
           ? live.slice().sort((a, b) => b.price - a.price)
-          : live.slice().sort((a, b) => a.price - b.price);
+          : sort === 'price_asc'
+            ? live.slice().sort((a, b) => a.price - b.price)
+            : live.slice();
         const pageItems = sorted.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
         const footer = `${live.length} listing${live.length === 1 ? '' : 's'} - page ${safePage}/${totalPages} - live search`;
-        return { embeds: [auctionEmbed(query, pageItems, footer)], components: [] };
+        return { embeds: [auctionEmbed(query, pageItems, footer)], components: controls(safePage, totalPages, sort, query) };
       }
     } catch {
       // Fall through to cached/stale index.
@@ -69,22 +90,7 @@ async function view(page, query, sort) {
     + ` - page ${safePage}/${totalPages} - ${source} - updated ${relativeTime(updatedAt)}`;
   const embed = auctionEmbed(heading, pageItems, footer);
 
-  const enc = encodeURIComponent(query || '');
-  const sortRow = new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId(`ah:sort:${safePage}:${enc}`)
-      .setPlaceholder('Sort order')
-      .addOptions(
-        { label: 'Newest', value: 'newest', default: sort === 'newest' },
-        { label: 'Low to High', value: 'price_asc', default: sort === 'price_asc' },
-        { label: 'High to Low', value: 'price_desc', default: sort === 'price_desc' },
-      ),
-  );
-  const navRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`ah:page:${safePage - 1}:${sort}:${enc}`).setLabel('<').setStyle(ButtonStyle.Secondary).setDisabled(safePage <= 1),
-    new ButtonBuilder().setCustomId(`ah:page:${safePage + 1}:${sort}:${enc}`).setLabel('>').setStyle(ButtonStyle.Secondary).setDisabled(safePage >= totalPages),
-  );
-  return { embeds: [embed], components: [sortRow, navRow] };
+  return { embeds: [embed], components: controls(safePage, totalPages, sort, query) };
 }
 
 module.exports = {

@@ -7,6 +7,7 @@ const { renderLitematic } = require('../lib/renderClient');
 const { getAuctionIndex } = require('../jobs/auction');
 const { errorEmbed } = require('../lib/embeds');
 const { formatNumber } = require('../lib/format');
+const { itemEmoji } = require('../lib/itemEmojis');
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 15_000;
@@ -86,14 +87,24 @@ function estimateMaterialCost(materials = [], listings = []) {
 }
 
 function materialListPayload(materials = []) {
-  const shown = materials.slice(0, 20);
-  const lines = shown.map((m) =>
-    `**${materialName(m)}:** \`${formatCount(m.count)}\` (${formatCount(m.stacks)} stack${m.stacks === 1 ? '' : 's'})`);
-  if (materials.length > shown.length) lines.push(`_...and ${materials.length - shown.length} more._`);
-  const embed = new EmbedBuilder()
-    .setColor(0x2b2d31)
-    .setDescription(`### Material List\n\n${lines.join('\n') || '_No material metadata was returned._'}`);
-  return { embeds: [embed], flags: MessageFlags.Ephemeral };
+  const lines = (materials || []).map((m) => {
+    const emoji = itemEmoji(m.key) || itemEmoji(materialName(m)) || '';
+    const stacks = Math.max(0, Number(m.stacks) || Math.ceil((Number(m.count) || 0) / 64));
+    const suffix = stacks > 1 ? ` - ${formatCount(stacks)} stacks` : '';
+    return `${emoji ? `${emoji} ` : ''}**${materialName(m)}:** \`${formatCount(m.count)}\`${suffix}`;
+  });
+  if (lines.length === 0) lines.push('_No material metadata was returned._');
+  const embeds = [];
+  let chunk = '### Material List\n\n';
+  for (const line of lines) {
+    if ((chunk + line + '\n').length > 3900) {
+      embeds.push(new EmbedBuilder().setColor(0x2b2d31).setDescription(chunk.trimEnd()));
+      chunk = '';
+    }
+    chunk += `${line}\n`;
+  }
+  if (chunk.trim()) embeds.push(new EmbedBuilder().setColor(0x2b2d31).setDescription(chunk.trimEnd()));
+  return { embeds: embeds.slice(0, 10), flags: MessageFlags.Ephemeral };
 }
 
 function costPayload(materials = []) {
@@ -131,8 +142,8 @@ function buildMessage({
     .setImage(`attachment://${attachment.name}`)
     .setFooter({ text: `Rotation ${normalizeRotation(rotation)} deg` });
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`render:rot:${token}:l`).setLabel('Rotate Left').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`render:rot:${token}:r`).setLabel('Rotate Right').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`render:rot:${token}:l`).setLabel('←').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`render:rot:${token}:r`).setLabel('→').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`render:mat:${token}`).setLabel('Material List').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`render:cost:${token}`).setLabel('Estimated Cost').setStyle(ButtonStyle.Primary),
   );

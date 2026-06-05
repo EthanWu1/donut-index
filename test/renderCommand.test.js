@@ -16,8 +16,24 @@ test('/render message includes material list and estimated cost buttons', () => 
   });
 
   const buttons = payload.components.flatMap((row) => row.toJSON().components).map((b) => b.label);
+  assert.ok(buttons.includes('←'));
+  assert.ok(buttons.includes('→'));
   assert.ok(buttons.includes('Material List'));
   assert.ok(buttons.includes('Estimated Cost'));
+});
+
+test('material list shows every material with icons and omits singular stack text', () => {
+  const payload = render.materialListPayload([
+    ...materials,
+    { key: 'dirt', name: 'Dirt', count: 1, stacks: 1 },
+  ]);
+  const text = payload.embeds.map((e) => e.data.description).join('\n');
+
+  assert.match(text, /Stone/);
+  assert.match(text, /Oak Log/);
+  assert.match(text, /Dirt/);
+  assert.doesNotMatch(text, /\(1 stack\)/);
+  assert.match(text, /3 stacks/);
 });
 
 test('estimated render cost prices whole stacks from lowest AH stack price', () => {

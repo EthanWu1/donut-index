@@ -1,7 +1,6 @@
 const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
 const api = require('../lib/api');
 const db = require('../lib/db');
-const { compareEmbed } = require('../lib/compareStats');
 const { renderCompareCard } = require('../lib/compareCard');
 const { errorEmbed } = require('../lib/embeds');
 
@@ -39,9 +38,7 @@ module.exports = {
       const firstStats = await loadPlayer(first);
       const secondStats = await loadPlayer(second);
       const file = new AttachmentBuilder(renderCompareCard(first, firstStats, second, secondStats), { name: 'compare.png' });
-      const embed = compareEmbed(first, firstStats, second, secondStats)
-        .setImage('attachment://compare.png');
-      return interaction.editReply({ embeds: [embed], files: [file] });
+      return interaction.editReply({ content: `**${first} vs ${second}**`, files: [file] });
     } catch (err) {
       if (err instanceof api.NotFoundError) {
         return interaction.editReply({ embeds: [errorEmbed('One of those DonutSMP players was not found.')] });

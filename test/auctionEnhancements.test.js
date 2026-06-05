@@ -59,6 +59,9 @@ test('/ah can use API search for enchantment-aware results', async () => {
     const payload = await ah.view(1, 'fortune', 'price_asc');
     assert.match(payload.embeds[0].data.description, /Fortune III/);
     assert.match(payload.embeds[0].data.footer.text, /live search/i);
+    const components = payload.components.flatMap((row) => row.toJSON().components);
+    assert.ok(components.some((c) => c.type === 3 && c.custom_id.startsWith('ah:sort:')));
+    assert.ok(components.some((c) => c.type === 2 && c.custom_id.startsWith('ah:page:')));
   } finally {
     api.getAuctionList = original;
   }

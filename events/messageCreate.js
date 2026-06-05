@@ -1,5 +1,5 @@
 const { Events } = require('discord.js');
-const { executePrefixCommand } = require('../lib/prefix');
+const { executePrefixCommand, sendMessageOutput } = require('../lib/prefix');
 
 module.exports = {
   name: Events.MessageCreate,
@@ -9,7 +9,7 @@ module.exports = {
       await executePrefixCommand(message);
     } catch (err) {
       console.error(`[prefix ${message.content}]`, err);
-      await message.reply({ content: 'Command failed. Try the slash-command version if this keeps happening.' }).catch(() => {});
+      await sendMessageOutput(message, { content: 'Command failed. Try the slash-command version if this keeps happening.' }).catch(() => {});
     }
   },
 };
