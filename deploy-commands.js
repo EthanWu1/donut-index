@@ -24,15 +24,15 @@ const rest = new REST().setToken(config.token);
     await rest.put(Routes.applicationCommands(config.clientId), { body: commands });
     console.log(`Registered ${commands.length} commands globally (propagation up to ~1h).`);
 
-    // If GUILD_ID is set, also register guild-scoped commands so updates are
-    // available immediately while global commands propagate.
+    // Global commands appear in every server. Guild commands are only for
+    // instant test deploys; registering both makes Discord show duplicates.
     if (config.guildId) {
-      if (process.env.CLEAR_GUILD_COMMANDS === 'true') {
-        await rest.put(Routes.applicationGuildCommands(config.clientId, config.guildId), { body: [] });
-        console.log(`Cleared guild-scoped commands from ${config.guildId}.`);
-      } else {
+      if (process.env.DEPLOY_GUILD_COMMANDS === 'true') {
         await rest.put(Routes.applicationGuildCommands(config.clientId, config.guildId), { body: commands });
-        console.log(`Registered ${commands.length} commands to guild ${config.guildId} for immediate availability.`);
+        console.log(`Registered ${commands.length} guild-scoped commands to ${config.guildId}.`);
+      } else {
+        await rest.put(Routes.applicationGuildCommands(config.clientId, config.guildId), { body: [] });
+        console.log(`Cleared guild-scoped commands from ${config.guildId} to avoid duplicates.`);
       }
     }
   } catch (err) {
