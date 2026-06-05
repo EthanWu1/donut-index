@@ -6,7 +6,6 @@ const LINES = [
   '_DonutSMP stats, leaderboards, live auction data, and build tools._',
   '',
   '**Player**',
-  '`/compare` - compare two players side by side',
   '`/stats` - player stats with 24h changes and a history chart',
   '`/rank` - a player\'s placement on every leaderboard',
   '`/link` - link your Discord account to your IGN',

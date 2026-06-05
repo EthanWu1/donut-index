@@ -21,6 +21,7 @@ test.after(cleanup);
 const db = require('../lib/db');
 const pay = require('../commands/pay');
 const unlink = require('../commands/unlink');
+const { PREFIX_COMMANDS } = require('../lib/prefix');
 
 function userInteraction(userId = 'discord-user') {
   const calls = [];
@@ -45,6 +46,13 @@ test('/pay embed does not display the internal watch id', () => {
   const embed = view.embeds[0].data;
   assert.strictEqual(embed.footer, undefined);
   assert.doesNotMatch(embed.description, /secret-watch-id/);
+});
+
+test('/compare is not exposed as a slash or prefix command', () => {
+  const commandFiles = fs.readdirSync(path.join(__dirname, '..', 'commands'));
+  assert.ok(!commandFiles.includes('compare.js'));
+  assert.ok(!PREFIX_COMMANDS.has('compare'));
+  assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '..', 'commands', 'help.js'), 'utf8'), /\/compare|!compare/);
 });
 
 test('/unlink asks for confirmation with red unlink and gray cancel buttons', async () => {
