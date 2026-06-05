@@ -37,6 +37,16 @@ function errorPayload(err, fallback) {
 }
 
 async function respondWithError(interaction, err, fallback) {
+  if (
+    interaction.deferred
+    && err instanceof api.ApiError
+    && (
+      (typeof interaction.isButton === 'function' && interaction.isButton())
+      || (typeof interaction.isStringSelectMenu === 'function' && interaction.isStringSelectMenu())
+    )
+  ) {
+    return;
+  }
   const payload = errorPayload(err, fallback);
   if (interaction.deferred || interaction.replied) {
     await interaction.editReply(payload).catch(() => {});

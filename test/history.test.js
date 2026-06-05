@@ -92,3 +92,24 @@ test('/history renders from the best current auction listing when no history exi
     auction.getAuctionIndex = original;
   }
 });
+
+test('/history falls back to recent persisted auction cache when memory is empty', () => {
+  const original = auction.getAuctionIndex;
+  auction.getAuctionIndex = () => ({ listings: [], transactions: [], updatedAt: 0 });
+  db.saveAuctionCache({
+    listings: [
+      { name: 'Ancient Debris', key: 'ancient_debris', amount: 1, price: 5000, stackPrice: 320000 },
+    ],
+    transactions: [],
+    updatedAt: Date.now(),
+  });
+
+  try {
+    const result = history.historyRowsFor('ancient debris');
+    assert.strictEqual(result.rows.length, 1);
+    assert.strictEqual(result.name, 'Ancient Debris');
+    assert.match(result.footer, /current AH data/i);
+  } finally {
+    auction.getAuctionIndex = original;
+  }
+});

@@ -33,8 +33,43 @@ function stackPriceForListing(listing) {
   return price > 0 ? Math.ceil((price / amount) * 64) : 0;
 }
 
+function listingId(it) {
+  return [
+    it && it.key,
+    it && it.name,
+    it && it.seller,
+    it && it.price,
+    it && it.amount,
+    it && it.enchantText,
+  ].join('|');
+}
+
+function currentAuctionState() {
+  const index = auction.getAuctionIndex();
+  const { listings = [], transactions = [] } = index;
+  const fallback = db.getAuctionCache(config.ahFallbackMs);
+  const seen = new Set();
+  const mergedListings = [];
+  const add = (it) => {
+    if (!it || typeof it !== 'object') return;
+    const id = listingId(it);
+    if (seen.has(id)) return;
+    seen.add(id);
+    mergedListings.push(it);
+  };
+  for (const row of listings) add(row);
+  if (fallback && Array.isArray(fallback.listings)) {
+    for (const row of fallback.listings) add(row);
+  }
+  return {
+    listings: mergedListings,
+    transactions,
+    updatedAt: index.updatedAt || (fallback && fallback.updatedAt) || 0,
+  };
+}
+
 function liveAuctionNames() {
-  const { listings = [], transactions = [] } = auction.getAuctionIndex();
+  const { listings = [], transactions = [] } = currentAuctionState();
   const out = [];
   for (const row of listings) if (row && row.name) out.push(row.name);
   for (const row of transactions) if (row && row.name) out.push(row.name);
@@ -63,7 +98,7 @@ function historySuggestions(query, limit = 25) {
 function bestCurrentListing(input) {
   const q = String(input || '').trim().toLowerCase();
   const key = normalizeItem(input);
-  const { listings = [], updatedAt = 0 } = auction.getAuctionIndex();
+  const { listings = [], updatedAt = 0 } = currentAuctionState();
   const candidates = listings
     .map((listing) => ({ listing, stackPrice: stackPriceForListing(listing) }))
     .filter((row) => row.stackPrice > 0);

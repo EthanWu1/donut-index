@@ -230,6 +230,10 @@ function extractList(raw) {
   return raw.auctions || raw.listings || raw.transactions || raw.items || raw.result || [];
 }
 
+function isMissingAuctionPageError(err) {
+  return /page you entered does not exist/i.test(String(err && err.message ? err.message : err));
+}
+
 // Walks every auction page (and recent sold pages) into a fresh index.
 async function rebuild() {
   if (building) return;
@@ -264,6 +268,7 @@ async function rebuild() {
       try {
         raw = await api.getAuctionList(p);
       } catch (e) {
+        if (live.length > 0 && isMissingAuctionPageError(e)) break;
         nextListingsError = e;
         console.warn(`[auction] list page ${p}: ${e.message}`);
         break;
@@ -315,4 +320,5 @@ function startAuctionJob() {
 
 module.exports = {
   startAuctionJob, getAuctionIndex, rebuild, normalizeListing, normalizeTxn, extractList, enchantText,
+  isMissingAuctionPageError,
 };

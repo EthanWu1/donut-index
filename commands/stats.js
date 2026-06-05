@@ -7,7 +7,7 @@ const db = require('../lib/db');
 const config = require('../config');
 const { itemEmoji } = require('../lib/itemEmojis');
 const { statsEmbed, historyEmbed, errorEmbed } = require('../lib/embeds');
-const { renderChart } = require('../lib/chart');
+const { renderChart, chartSummary } = require('../lib/chart');
 
 // `item` is the bot's own application emoji (from the item-emoji import) — the
 // only kind of custom emoji Discord lets the bot use on a select menu.
@@ -107,10 +107,14 @@ function buildHistoryView(ign, statKey, range) {
     ts: r.ts,
     value: isPlaytime ? r.playtime * config.playtimeUnitSeconds : r[stat.key],
   }));
-  const png = renderChart(points, {
+  const chartOpts = {
     money: ['money', 'spent', 'made'].includes(stat.key),
     duration: isPlaytime,
-    title: `${ign}'s ${stat.label} History`,
+  };
+  const png = renderChart(points, {
+    ...chartOpts,
+    title: chartSummary(points, chartOpts).latestLabel,
+    subtitle: null,
   });
   const file = new AttachmentBuilder(png, { name: 'history.png' });
   const embed = historyEmbed(ign, stat.label, rangeDef.label);

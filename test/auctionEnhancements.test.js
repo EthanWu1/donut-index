@@ -18,6 +18,7 @@ cleanup();
 test.after(cleanup);
 
 const api = require('../lib/api');
+const db = require('../lib/db');
 const auction = require('../jobs/auction');
 const ah = require('../commands/ah');
 
@@ -99,8 +100,41 @@ test('/ah searches the global cached index before live API search', async () => 
   }
 });
 
+test('auction rebuild treats missing page after live rows as a complete scan', async () => {
+  const originalList = api.getAuctionList;
+  const originalTransactions = api.getAuctionTransactions;
+
+  api.getAuctionTransactions = async () => [];
+  api.getAuctionList = async (page) => {
+    if (page === 1) {
+      return [{
+        seller: { name: 'Seller' },
+        price: 6400,
+        item: {
+          id: 'minecraft:missingpage_stone',
+          count: 64,
+          display_name: 'Missingpage Stone',
+        },
+      }];
+    }
+    throw new api.ApiError('HTTP 500: {"message":"The page you entered does not exist"}');
+  };
+
+  try {
+    await auction.rebuild();
+    const index = auction.getAuctionIndex();
+    assert.ok(index.updatedAt > 0);
+    assert.strictEqual(index.stale, false);
+    assert.ok(index.listings.some((it) => it.key === 'missingpage_stone'));
+    assert.ok(db.getAuctionCache(6 * 3600_000).listings.some((it) => it.key === 'missingpage_stone'));
+    assert.ok(db.auctionPriceHistory('missingpage_stone', 0).length >= 1);
+  } finally {
+    api.getAuctionList = originalList;
+    api.getAuctionTransactions = originalTransactions;
+  }
+});
+
 test('/ah autocomplete suggests items from recent auction cache fallback', async () => {
-  const db = require('../lib/db');
   db.saveAuctionCache({
     listings: [{
       name: 'Fallbackonly Hoe',

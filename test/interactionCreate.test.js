@@ -85,7 +85,7 @@ test('API errors in slash commands send a service unavailable error embed', asyn
   }
 });
 
-test('API errors after deferred button interactions edit the current reply', async () => {
+test('API errors after deferred button interactions do not replace the current reply', async () => {
   const originalError = console.error;
   console.error = () => {};
   try {
@@ -98,9 +98,7 @@ test('API errors after deferred button interactions edit the current reply', asy
 
     await interactionCreate.execute(interaction);
 
-    assert.strictEqual(interaction.calls.length, 1);
-    assert.strictEqual(interaction.calls[0][0], 'editReply');
-    assert.match(interaction.calls[0][1].embeds[0].data.description, /service is not available/i);
+    assert.strictEqual(interaction.calls.length, 0);
   } finally {
     console.error = originalError;
   }
