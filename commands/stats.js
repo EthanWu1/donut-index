@@ -110,6 +110,7 @@ function buildHistoryView(ign, statKey, range) {
   const png = renderChart(points, {
     money: ['money', 'spent', 'made'].includes(stat.key),
     duration: isPlaytime,
+    title: `${ign}'s ${stat.label} History`,
   });
   const file = new AttachmentBuilder(png, { name: 'history.png' });
   const embed = historyEmbed(ign, stat.label, rangeDef.label);

@@ -19,7 +19,7 @@ test.after(cleanup);
 
 const api = require('../lib/api');
 const compare = require('../commands/compare');
-const { comparisonRows } = require('../lib/compareStats');
+const { comparisonRows, comparisonEntries } = require('../lib/compareStats');
 
 const statsA = {
   money: 1500,
@@ -68,6 +68,20 @@ test('comparisonRows labels which player is ahead for each stat', () => {
   assert.match(rows.find((r) => r.includes('Balance')), /Alice by/);
   assert.match(rows.find((r) => r.includes('Shards')), /Bob by/);
   assert.match(rows.find((r) => r.includes('Blocks Broken')), /Tie/);
+});
+
+test('comparisonEntries expose formatted values and winners for scoreboard rendering', () => {
+  const entries = comparisonEntries('Alice', statsA, 'Bob', statsB, { playtimeUnitSeconds: 0.001 });
+  const balance = entries.find((e) => e.label === 'Balance');
+  const deaths = entries.find((e) => e.label === 'Deaths');
+  const broken = entries.find((e) => e.label === 'Blocks Broken');
+
+  assert.strictEqual(balance.winner, 'first');
+  assert.strictEqual(balance.firstLabel, '$1.5K');
+  assert.strictEqual(balance.secondLabel, '$1K');
+  assert.strictEqual(deaths.winner, 'first');
+  assert.strictEqual(broken.winner, 'tie');
+  assert.strictEqual(broken.diffLabel, '0');
 });
 
 test('/compare fetches both players and replies with a comparison embed', async () => {
