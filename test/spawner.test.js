@@ -62,5 +62,69 @@ test('/spawner blaze renders blaze powder at the 5x rate', async () => {
   const boneRate = Number(perMinute(skeleton, 'Bones').replace(/,/g, ''));
   const blazeRate = Number(perMinute(blaze, 'Blaze Powder').replace(/,/g, ''));
 
-  assert.ok(Math.abs(blazeRate - boneRate * 5) <= 1);
+  assert.ok(Math.abs(blazeRate - boneRate * 5) <= 5);
+});
+
+test('spawner price parser supports commas and suffixes', () => {
+  assert.strictEqual(spawner.parsePrice('1,250'), 1250);
+  assert.strictEqual(spawner.parsePrice('1.5k'), 1500);
+  assert.strictEqual(spawner.parsePrice('2m'), 2000000);
+  assert.strictEqual(spawner.parsePrice(''), 0);
+});
+
+test('spawner view renders manually entered profit per drop and total', () => {
+  const payload = spawner.view('skeleton', 1000, 0, { bone: 2, arrow: 1 });
+  const description = payload.embeds[0].data.description;
+
+  assert.match(description, /\*\*Bones:\*\*.*\$[0-9,]+`\/hour/);
+  assert.match(description, /\*\*Arrows:\*\*.*\$[0-9,]+`\/hour/);
+  assert.match(description, /\*\*Total Profit:\*\*.*\$[0-9,]+`\/hour/);
+});
+
+test('spawner price button opens a price modal for the selected drops', async () => {
+  const calls = [];
+  const interaction = {
+    customId: 'spawner:p:skeleton:1000:0',
+    async showModal(modal) { calls.push(modal); },
+  };
+
+  await spawner.button(interaction);
+
+  assert.strictEqual(calls.length, 1);
+  const modal = calls[0].toJSON();
+  assert.strictEqual(modal.custom_id, 'spawner:pm:skeleton:1000:0:');
+  assert.deepStrictEqual(
+    modal.components.map((row) => row.components[0].custom_id),
+    ['bone', 'arrow'],
+  );
+});
+
+test('spawner price modal re-renders the current view with profit mode', async () => {
+  const calls = [];
+  const interaction = {
+    customId: 'spawner:pm:skeleton:1000:0:',
+    fields: {
+      getTextInputValue(id) {
+        return id === 'bone' ? '2' : '1';
+      },
+    },
+    async update(payload) { calls.push(payload); },
+  };
+
+  await spawner.modal(interaction);
+
+  assert.strictEqual(calls.length, 1);
+  assert.match(calls[0].embeds[0].data.description, /\*\*Total Profit:\*\*/);
+});
+
+test('spawner derived production and profit values round down', () => {
+  const payload = spawner.view('skeleton', 1, 1, { bone: 1, arrow: 1 });
+  const description = payload.embeds[0].data.description;
+  const boneLine = description.split('\n').find((line) => line.includes('**Bones:**'));
+  const arrowLine = description.split('\n').find((line) => line.includes('**Arrows:**'));
+
+  assert.doesNotMatch(boneLine, /`3`\/min/);
+  assert.doesNotMatch(arrowLine, /`2`\/min/);
+  assert.match(boneLine, /`2`\/min/);
+  assert.match(arrowLine, /`1`\/min/);
 });

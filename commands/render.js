@@ -4,17 +4,15 @@ const {
   ButtonBuilder, ButtonStyle, ActionRowBuilder, MessageFlags,
 } = require('discord.js');
 const { renderLitematic } = require('../lib/renderClient');
+const { getAuctionIndex } = require('../jobs/auction');
 const { errorEmbed } = require('../lib/embeds');
+const { formatNumber } = require('../lib/format');
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 15_000;
 const USER_COOLDOWN_MS = 30_000;
 const QUEUE_MAX = 3;
 const IMAGE_SIZE = 1024;
-
-// Rotation sessions: the source .litematic is held in memory keyed by a short
-// token in the button customId, so the arrows re-render at a new camera yaw
-// without re-downloading. Owner-locked, evicted on a TTL.
 const SESSION_TTL_MS = 15 * 60 * 1000;
 const SESSION_MAX = 30;
 const sessions = new Map();
@@ -41,6 +39,14 @@ function formatCount(n) {
   return Number(n || 0).toLocaleString('en-US');
 }
 
+function materialName(m) {
+  return String(m && (m.name || m.key) || 'Unknown item')
+    .replace(/^minecraft:/i, '')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function schematicVolume(size) {
   if (!size) return 0;
   return Math.max(0, Number(size.x || 0))
@@ -57,8 +63,61 @@ function safeName(name) {
   return `${base || 'render'}-render.png`;
 }
 
-// Embed + image + rotation arrows for a render result.
-function buildMessage({ png, meta = {}, fileName = 'render.litematic', rotation = 0, token }) {
+function estimateMaterialCost(materials = [], listings = []) {
+  const lines = [];
+  let total = 0;
+  for (const mat of materials) {
+    const key = String(mat.key || '').replace(/^minecraft:/i, '').toLowerCase();
+    const matches = listings.filter((it) => String(it.key || '').toLowerCase() === key && Number(it.price) > 0);
+    if (matches.length === 0) {
+      lines.push({ ...mat, name: materialName(mat), missing: true, stackPrice: null, cost: null });
+      continue;
+    }
+    const stackPrice = Math.min(...matches.map((it) => {
+      const amount = Math.max(1, Number(it.amount) || 1);
+      return Math.ceil((Number(it.price) / amount) * 64);
+    }));
+    const stacks = Math.max(0, Number(mat.stacks) || Math.ceil((Number(mat.count) || 0) / 64));
+    const cost = stackPrice * stacks;
+    total += cost;
+    lines.push({ ...mat, name: materialName(mat), stacks, stackPrice, cost });
+  }
+  return { total, lines };
+}
+
+function materialListPayload(materials = []) {
+  const shown = materials.slice(0, 20);
+  const lines = shown.map((m) =>
+    `**${materialName(m)}:** \`${formatCount(m.count)}\` (${formatCount(m.stacks)} stack${m.stacks === 1 ? '' : 's'})`);
+  if (materials.length > shown.length) lines.push(`_...and ${materials.length - shown.length} more._`);
+  const embed = new EmbedBuilder()
+    .setColor(0x2b2d31)
+    .setDescription(`### Material List\n\n${lines.join('\n') || '_No material metadata was returned._'}`);
+  return { embeds: [embed], flags: MessageFlags.Ephemeral };
+}
+
+function costPayload(materials = []) {
+  const { listings, stale, updatedAt } = getAuctionIndex();
+  const estimate = estimateMaterialCost(materials, listings);
+  const shown = estimate.lines.slice(0, 15);
+  const lines = shown.map((m) => {
+    if (m.missing) return `**${m.name}:** no AH stack price found`;
+    return `**${m.name}:** ${formatCount(m.stacks)} stack${m.stacks === 1 ? '' : 's'} x $${formatNumber(m.stackPrice)} = \`$${formatNumber(m.cost)}\``;
+  });
+  if (estimate.lines.length > shown.length) lines.push(`_...and ${estimate.lines.length - shown.length} more._`);
+  const footer = updatedAt
+    ? `AH ${stale ? 'stale fallback' : 'cache'} from ${new Date(updatedAt).toLocaleString('en-US')}`
+    : 'AH prices are not available yet';
+  const embed = new EmbedBuilder()
+    .setColor(0x4aa3df)
+    .setDescription(`### Estimated Material Cost\n\n${lines.join('\n') || '_No material metadata was returned._'}\n\n**Total:** \`$${formatNumber(estimate.total)}\``)
+    .setFooter({ text: footer });
+  return { embeds: [embed], flags: MessageFlags.Ephemeral };
+}
+
+function buildMessage({
+  png, meta = {}, fileName = 'render.litematic', rotation = 0, token,
+}) {
   const size = meta.size || { x: 0, y: 0, z: 0 };
   const title = meta.name || fileName.replace(/\.litematic$/i, '') || 'Litematic Render';
   const attachment = new AttachmentBuilder(png, { name: safeName(title) });
@@ -67,16 +126,16 @@ function buildMessage({ png, meta = {}, fileName = 'render.litematic', rotation 
     .setTitle(title)
     .addFields(
       { name: 'Blocks', value: `\`${formatCount(meta.blockCount)} / ${formatCount(schematicVolume(size))}\``, inline: true },
-      { name: 'Size', value: `\`${formatCount(size.x)} × ${formatCount(size.y)} × ${formatCount(size.z)}\``, inline: true },
+      { name: 'Size', value: `\`${formatCount(size.x)} x ${formatCount(size.y)} x ${formatCount(size.z)}\``, inline: true },
     )
     .setImage(`attachment://${attachment.name}`)
-    .setFooter({ text: `Rotation ${normalizeRotation(rotation)}°` });
+    .setFooter({ text: `Rotation ${normalizeRotation(rotation)} deg` });
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`render:rot:${token}:l`).setLabel('Rotate ⟲').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`render:rot:${token}:r`).setLabel('Rotate ⟳').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`render:rot:${token}:l`).setLabel('Rotate Left').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`render:rot:${token}:r`).setLabel('Rotate Right').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`render:mat:${token}`).setLabel('Material List').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`render:cost:${token}`).setLabel('Estimated Cost').setStyle(ButtonStyle.Primary),
   );
-  // attachments: [] drops the prior render so a re-rotate doesn't leave a
-  // stale image with the same name behind the embed.
   return { embeds: [embed], files: [attachment], attachments: [], components: [row] };
 }
 
@@ -144,10 +203,16 @@ module.exports = {
       pruneSessions();
       const token = crypto.randomBytes(8).toString('hex');
       sessions.set(token, {
-        buffer: buf, name: file.name, rotation: 0,
-        ownerId: interaction.user.id, createdAt: Date.now(),
+        buffer: buf,
+        name: file.name,
+        rotation: 0,
+        materials: meta.materials || [],
+        ownerId: interaction.user.id,
+        createdAt: Date.now(),
       });
-      return interaction.editReply(buildMessage({ png, meta, fileName: file.name, rotation: 0, token }));
+      return interaction.editReply(buildMessage({
+        png, meta, fileName: file.name, rotation: 0, token,
+      }));
     } catch (err) {
       return interaction.editReply({
         embeds: [errorEmbed(`Render failed: ${String(err.message || err).slice(0, 300)}`)],
@@ -157,33 +222,37 @@ module.exports = {
     }
   },
 
-  // Button: render:rot:<token>:<l|r> — re-render the held .litematic at a new yaw.
   async button(interaction) {
     const [, sub, token, dir] = interaction.customId.split(':');
-    if (sub !== 'rot') return undefined;
-
     pruneSessions();
     const sess = sessions.get(token);
     if (!sess) {
       return interaction.reply({
-        embeds: [errorEmbed('This render has expired — run `/render` again.')],
+        embeds: [errorEmbed('This render has expired - run `/render` again.')],
         flags: MessageFlags.Ephemeral,
       });
     }
     if (String(interaction.user.id) !== String(sess.ownerId)) {
       return interaction.reply({
-        embeds: [errorEmbed('Only the person who ran `/render` can rotate this.')],
+        embeds: [errorEmbed('Only the person who ran `/render` can use this.')],
         flags: MessageFlags.Ephemeral,
       });
     }
+    if (sub === 'mat') return interaction.reply(materialListPayload(sess.materials || []));
+    if (sub === 'cost') return interaction.reply(costPayload(sess.materials || []));
+    if (sub !== 'rot') return undefined;
 
     await interaction.deferUpdate().catch(() => {});
     sess.rotation = normalizeRotation(sess.rotation + (dir === 'l' ? -90 : 90));
     sess.createdAt = Date.now();
     try {
       const { png, meta } = await renderLitematic(sess.buffer, {
-        width: IMAGE_SIZE, height: IMAGE_SIZE, transparentBackground: true, yawDegrees: sess.rotation,
+        width: IMAGE_SIZE,
+        height: IMAGE_SIZE,
+        transparentBackground: true,
+        yawDegrees: sess.rotation,
       });
+      sess.materials = meta.materials || sess.materials || [];
       return interaction.editReply(buildMessage({
         png, meta, fileName: sess.name, rotation: sess.rotation, token,
       }));
@@ -194,4 +263,8 @@ module.exports = {
       }).catch(() => {});
     }
   },
+
+  buildMessage,
+  estimateMaterialCost,
+  materialListPayload,
 };

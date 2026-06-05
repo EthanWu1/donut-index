@@ -14,7 +14,7 @@ if (!config.token) { console.error('BOT_TOKEN missing in .env'); process.exit(1)
 // attachment (and body) on donutbot-authored forum posts — without it Discord
 // strips attachments/content from messages this bot did not author.
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.MessageContent],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
 });
 client.commands = new Collection();
 

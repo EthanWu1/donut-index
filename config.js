@@ -34,6 +34,8 @@ module.exports = {
   // ~400 real pages; 600 caps the runaway case without truncating real data.
   ahMaxPages: 600,
   ahRefreshMs: 20 * 60 * 1000,
+  ahFallbackMs: 6 * 60 * 60 * 1000,
+  ahHistoryRawRetentionMs: 30 * 24 * 60 * 60 * 1000,
   // Recent sold-auction pages indexed for /price (the API caps this at 10).
   ahTxnPages: 10,
   // Leaderboard indexing for /rank.

@@ -1,7 +1,8 @@
 const {
   SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder,
 } = require('discord.js');
-const { getAuctionIndex } = require('../jobs/auction');
+const api = require('../lib/api');
+const { getAuctionIndex, normalizeListing, extractList } = require('../jobs/auction');
 const { auctionEmbed, errorEmbed } = require('../lib/embeds');
 const { relativeTime } = require('../lib/format');
 
@@ -9,14 +10,37 @@ const PER_PAGE = 12;
 const SORTS = ['newest', 'price_asc', 'price_desc'];
 const API_UNAVAILABLE = 'The DonutSMP API service is not available right now. Try again in a moment.';
 
-// Synchronous: reads the in-memory auction index, no API calls.
-function view(page, query, sort) {
-  const { listings, updatedAt, listingsError } = getAuctionIndex();
-  if (listingsError) {
-    return {
-      embeds: [errorEmbed(API_UNAVAILABLE)],
-      components: [],
-    };
+async function liveSearch(page, query) {
+  if (!query) return null;
+  const raw = await api.getAuctionList(page, { search: query, sort: 'lowest_price' });
+  return extractList(raw)
+    .filter((it) => it && typeof it === 'object')
+    .map(normalizeListing);
+}
+
+async function view(page, query, sort) {
+  const {
+    listings, updatedAt, listingsError, stale,
+  } = getAuctionIndex();
+  if (query) {
+    try {
+      const live = await liveSearch(page, query);
+      if (live && live.length > 0) {
+        const totalPages = Math.max(1, Math.ceil(live.length / PER_PAGE));
+        const safePage = Math.min(Math.max(1, page), totalPages);
+        const sorted = sort === 'price_desc'
+          ? live.slice().sort((a, b) => b.price - a.price)
+          : live.slice().sort((a, b) => a.price - b.price);
+        const pageItems = sorted.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
+        const footer = `${live.length} listing${live.length === 1 ? '' : 's'} - page ${safePage}/${totalPages} - live search`;
+        return { embeds: [auctionEmbed(query, pageItems, footer)], components: [] };
+      }
+    } catch {
+      // Fall through to cached/stale index.
+    }
+  }
+  if (listingsError && updatedAt === 0) {
+    return { embeds: [errorEmbed(API_UNAVAILABLE)], components: [] };
   }
   if (updatedAt === 0) {
     return {
@@ -26,13 +50,15 @@ function view(page, query, sort) {
   }
 
   let items = listings;
+  let source = stale ? 'stale fallback' : 'cached index';
   if (query) {
+    source = stale ? 'stale fallback' : 'cached fallback';
     const q = query.toLowerCase();
-    items = items.filter((it) => it.name.toLowerCase().includes(q));
+    items = items.filter((it) => (it.searchText || it.name || '').toLowerCase().includes(q));
   }
+
   if (sort === 'price_asc') items = items.slice().sort((a, b) => a.price - b.price);
   else if (sort === 'price_desc') items = items.slice().sort((a, b) => b.price - a.price);
-  // 'newest' keeps index order (auction page 1 is the newest listings)
 
   const totalPages = Math.max(1, Math.ceil(items.length / PER_PAGE));
   const safePage = Math.min(Math.max(1, page), totalPages);
@@ -40,7 +66,7 @@ function view(page, query, sort) {
 
   const heading = query || 'Auction House';
   const footer = `${items.length} listing${items.length === 1 ? '' : 's'}`
-    + ` · page ${safePage}/${totalPages} · updated ${relativeTime(updatedAt)}`;
+    + ` - page ${safePage}/${totalPages} - ${source} - updated ${relativeTime(updatedAt)}`;
   const embed = auctionEmbed(heading, pageItems, footer);
 
   const enc = encodeURIComponent(query || '');
@@ -55,8 +81,8 @@ function view(page, query, sort) {
       ),
   );
   const navRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`ah:page:${safePage - 1}:${sort}:${enc}`).setLabel('◀').setStyle(ButtonStyle.Secondary).setDisabled(safePage <= 1),
-    new ButtonBuilder().setCustomId(`ah:page:${safePage + 1}:${sort}:${enc}`).setLabel('▶').setStyle(ButtonStyle.Secondary).setDisabled(safePage >= totalPages),
+    new ButtonBuilder().setCustomId(`ah:page:${safePage - 1}:${sort}:${enc}`).setLabel('<').setStyle(ButtonStyle.Secondary).setDisabled(safePage <= 1),
+    new ButtonBuilder().setCustomId(`ah:page:${safePage + 1}:${sort}:${enc}`).setLabel('>').setStyle(ButtonStyle.Secondary).setDisabled(safePage >= totalPages),
   );
   return { embeds: [embed], components: [sortRow, navRow] };
 }
@@ -75,7 +101,7 @@ module.exports = {
     const out = [];
     for (const it of listings) {
       if (out.length >= 25) break;
-      if (it.name.toLowerCase().includes(q) && !seen.has(it.name)) {
+      if ((it.searchText || it.name || '').toLowerCase().includes(q) && !seen.has(it.name)) {
         seen.add(it.name);
         out.push({ name: it.name, value: it.name });
       }
@@ -85,19 +111,19 @@ module.exports = {
 
   async execute(interaction) {
     const query = (interaction.options.getString('item') || '').trim();
-    return interaction.reply(view(1, query, 'price_asc'));
+    return interaction.reply(await view(1, query, 'price_asc'));
   },
 
-  // Button: ah:page:<page>:<sort>:<encodedQuery>
   async button(interaction) {
     const [, , pageStr, sort, enc] = interaction.customId.split(':');
     const s = SORTS.includes(sort) ? sort : 'price_asc';
-    return interaction.update(view(Math.max(1, Number(pageStr) || 1), decodeURIComponent(enc || ''), s));
+    return interaction.update(await view(Math.max(1, Number(pageStr) || 1), decodeURIComponent(enc || ''), s));
   },
 
-  // Select menu: ah:sort:<page>:<encodedQuery> — chosen value is the sort order.
   async selectMenu(interaction) {
     const [, , pageStr, enc] = interaction.customId.split(':');
-    return interaction.update(view(Math.max(1, Number(pageStr) || 1), decodeURIComponent(enc || ''), interaction.values[0]));
+    return interaction.update(await view(Math.max(1, Number(pageStr) || 1), decodeURIComponent(enc || ''), interaction.values[0]));
   },
+
+  view,
 };

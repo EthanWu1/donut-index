@@ -66,6 +66,10 @@ async function deliverHoloprint(interaction, buffer, sourceName) {
         '',
         'Open it on a device running Minecraft **Bedrock** to import it, then'
         + ' place the hologram to build along.',
+        '',
+        '**Quick use:** open the pack, enable it in your world resource packs,'
+        + ' then use the HoloPrint controls in-game to move, rotate, layer,'
+        + ' and toggle the hologram while building.',
         ...warningLines,
       ].join('\n'));
     return interaction.editReply({ embeds: [embed], files: [file], components: [] });
@@ -81,6 +85,9 @@ async function deliverHoloprint(interaction, buffer, sourceName) {
     '',
     'The automatic pack build was unavailable, so drop this `.mcstructure` into'
     + ' the HoloPrint web app to finish your pack.',
+    '',
+    '**Quick use:** upload the `.mcstructure`, build the pack, import it into'
+    + ' Minecraft Bedrock, then enable the resource pack in your world.',
     ...warningLines,
   ];
   if (result.packError) lines.push('', `_Pack builder said: ${result.packError}_`);

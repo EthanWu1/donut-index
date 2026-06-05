@@ -105,9 +105,12 @@ function buildHistoryView(ign, statKey, range) {
 
   const points = rows.map((r) => ({
     ts: r.ts,
-    value: isPlaytime ? (r.playtime * config.playtimeUnitSeconds) / 3600 : r[stat.key],
+    value: isPlaytime ? r.playtime * config.playtimeUnitSeconds : r[stat.key],
   }));
-  const png = renderChart(points, { money: ['money', 'spent', 'made'].includes(stat.key) });
+  const png = renderChart(points, {
+    money: ['money', 'spent', 'made'].includes(stat.key),
+    duration: isPlaytime,
+  });
   const file = new AttachmentBuilder(png, { name: 'history.png' });
   const embed = historyEmbed(ign, stat.label, rangeDef.label);
 

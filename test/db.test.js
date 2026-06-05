@@ -48,3 +48,38 @@ test('snapshots: add and query by time', () => {
   assert.strictEqual(db.snapshotsSince('Gamma', base - 3 * 3600_000).length, 2);
   assert.strictEqual(db.latestSnapshot('Unknown'), null);
 });
+
+test('auction cache returns only useful recent fallback data', () => {
+  const now = Date.now();
+  db.saveAuctionCache({
+    listings: [{ key: 'stone', name: 'Stone', amount: 64, price: 128, seller: 'Builder' }],
+    transactions: [],
+    updatedAt: now - 60_000,
+  });
+
+  const recent = db.getAuctionCache(6 * 3600_000, now);
+  assert.strictEqual(recent.listings.length, 1);
+  assert.strictEqual(recent.listings[0].name, 'Stone');
+
+  db.saveAuctionCache({
+    listings: [{ key: 'dirt', name: 'Dirt', amount: 64, price: 64, seller: 'Old' }],
+    transactions: [],
+    updatedAt: now - 7 * 3600_000,
+  });
+  assert.strictEqual(db.getAuctionCache(6 * 3600_000, now), null);
+});
+
+test('auction price history compacts old raw points into daily summaries', () => {
+  const day = 86400_000;
+  const now = Date.now();
+  db.recordAuctionPricePoint({ key: 'stone', name: 'Stone', lowestStackPrice: 640 }, now - 40 * day);
+  db.recordAuctionPricePoint({ key: 'stone', name: 'Stone', lowestStackPrice: 512 }, now - 40 * day + 3600_000);
+  db.recordAuctionPricePoint({ key: 'stone', name: 'Stone', lowestStackPrice: 704 }, now - 2 * day);
+
+  db.compactAuctionHistory(now, 30 * day);
+
+  const history = db.auctionPriceHistory('stone', 0);
+  assert.ok(history.some((p) => p.source === 'daily' && p.lowestStackPrice === 512));
+  assert.ok(history.some((p) => p.source === 'raw' && p.lowestStackPrice === 704));
+  assert.ok(!history.some((p) => p.source === 'raw' && p.lowestStackPrice === 640));
+});

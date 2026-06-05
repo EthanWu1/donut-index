@@ -2,6 +2,7 @@ const {
   SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
   StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle,
 } = require('discord.js');
+const crypto = require('node:crypto');
 const config = require('../config');
 const { itemEmoji } = require('../lib/itemEmojis');
 
@@ -38,16 +39,46 @@ const SPAWNERS = {
   iron_golem: { label: 'Iron Golem', drops: [{ name: 'Iron Ingots', key: 'iron_ingot', mult: 1 }] },
 };
 const TYPE_KEYS = Object.keys(SPAWNERS);
+const priceStore = new Map();
 
 function num(n) { return Math.round(n).toLocaleString('en-US'); }
 function clamp(n) { return Math.min(MAX, Math.max(MIN, Math.round(Number(n) || MIN))); }
+function parsePrice(input) {
+  const m = /^([\d,.]+)\s*([kmb])?$/i.exec(String(input || '').trim());
+  if (!m) return 0;
+  const n = parseFloat(m[1].replace(/,/g, ''));
+  if (!Number.isFinite(n) || n < 0) return 0;
+  const mult = { k: 1e3, m: 1e6, b: 1e9 }[(m[2] || '').toLowerCase()] || 1;
+  return Math.round(n * mult);
+}
+
+function pricesFrom(input) {
+  if (!input) return {};
+  if (typeof input === 'string') return priceStore.get(input) || {};
+  return input;
+}
+
+function storePrices(prices) {
+  const clean = {};
+  for (const [key, value] of Object.entries(prices || {})) {
+    const n = Number(value) || 0;
+    if (n > 0) clean[key] = n;
+  }
+  if (Object.keys(clean).length === 0) return '';
+  const token = crypto.randomBytes(4).toString('hex');
+  priceStore.set(token, clean);
+  return token;
+}
 
 // Builds the embed + interactive controls for a type/count. `pilesRaw` of 0
-// (or blank) auto-splits by STACK_SIZE; a positive value pins the pile count.
-function view(type, countRaw, pilesRaw) {
+// auto-splits by STACK_SIZE; a positive value pins the pile count.
+function view(type, countRaw, pilesRaw, priceInput = '') {
   const t = SPAWNERS[type] ? type : 'skeleton';
   const sp = SPAWNERS[t];
   const x = clamp(countRaw);
+  const prices = pricesFrom(priceInput);
+  const token = typeof priceInput === 'string' ? priceInput : storePrices(prices);
+  const hasPrices = Object.values(prices).some((v) => Number(v) > 0);
 
   const reqPiles = Math.max(0, Math.round(Number(pilesRaw) || 0));
   const autoPiles = Math.max(1, Math.round(x / STACK_SIZE));
@@ -59,16 +90,29 @@ function view(type, countRaw, pilesRaw) {
 
   const titleEmoji = itemEmoji(`${t}_spawn_egg`) || itemEmoji(sp.drops[0].key) || '';
   const lines = [`### ${titleEmoji} ${sp.label} Spawner Production`, '', `**${num(x)}** spawners`, ''];
+  let totalProfitHour = 0;
   for (const d of sp.drops) {
     const ic = itemEmoji(d.key);
-    const perMin = splitBase * d.mult;
-    lines.push(`${ic ? `${ic} ` : ''}**${d.name}:**  \`${num(perMin)}\`/min  ·  \`${num(perMin * 60)}\`/hour`);
+    const perMin = Math.floor(splitBase * d.mult);
+    const perHour = Math.floor(splitBase * d.mult * 60);
+    let line = `${ic ? `${ic} ` : ''}**${d.name}:**  \`${num(perMin)}\`/min  -  \`${num(perHour)}\`/hour`;
+    const price = Number(prices[d.key]) || 0;
+    if (price > 0) {
+      const moneyMin = Math.floor(perMin * price);
+      const moneyHour = Math.floor(perHour * price);
+      totalProfitHour += moneyHour;
+      line += `  -  \`$${num(moneyMin)}\`/min  -  \`$${num(moneyHour)}\`/hour`;
+    }
+    lines.push(line);
+  }
+  if (hasPrices) {
+    lines.push('', `**Total Profit:** \`$${num(totalProfitHour)}\`/hour`);
   }
   lines.push('');
   if (piles > 1) {
     lines.push(`Split into **${num(piles)}** piles of ~${num(each)} spawners`
       + ` (about **${gain.toFixed(1)}x** the one-pile rate)`
-      + `${reqPiles > 0 ? ' — pile count set manually' : ' — auto-split'}.`);
+      + `${reqPiles > 0 ? ' - pile count set manually' : ' - auto-split'}.`);
   } else {
     lines.push('_One pile is fine at this size; splitting only helps past ~1,000 spawners._');
   }
@@ -80,22 +124,36 @@ function view(type, countRaw, pilesRaw) {
 
   const typeRow = new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
-      .setCustomId(`spawner:t:${x}:${reqPiles}`)
+      .setCustomId(`spawner:t:${x}:${reqPiles}:${token}`)
       .setPlaceholder('Switch spawner type')
       .addOptions(TYPE_KEYS.map((k) => ({ label: SPAWNERS[k].label, value: k, default: k === t }))),
   );
   const stepRow = new ActionRowBuilder().addComponents(
     ...STEPS.map((s) =>
       new ButtonBuilder()
-        .setCustomId(`spawner:a:${t}:${x}:${reqPiles}:${s}`)
-        .setLabel(`${s > 0 ? '+' : '−'}${num(Math.abs(s))}`)
+        .setCustomId(`spawner:a:${t}:${x}:${reqPiles}:${s}:${token}`)
+        .setLabel(`${s > 0 ? '+' : '-'}${num(Math.abs(s))}`)
         .setStyle(ButtonStyle.Secondary)),
     new ButtonBuilder()
-      .setCustomId(`spawner:s:${t}:${x}:${reqPiles}`)
+      .setCustomId(`spawner:s:${t}:${x}:${reqPiles}:${token}`)
       .setLabel('Set')
       .setStyle(ButtonStyle.Primary),
   );
-  return { embeds: [embed], components: [typeRow, stepRow] };
+  const priceRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`spawner:p:${t}:${x}:${reqPiles}:${token}`)
+      .setLabel(hasPrices ? 'Edit Prices' : 'Set Prices')
+      .setStyle(ButtonStyle.Success),
+  );
+  if (hasPrices) {
+    priceRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`spawner:c:${t}:${x}:${reqPiles}`)
+        .setLabel('Clear Prices')
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
+  return { embeds: [embed], components: [typeRow, stepRow, priceRow] };
 }
 
 module.exports = {
@@ -120,7 +178,7 @@ module.exports = {
   async button(interaction) {
     const p = interaction.customId.split(':');
     if (p[1] === 'a') {
-      return interaction.update(view(p[2], clamp(Number(p[3]) + Number(p[5])), p[4]));
+      return interaction.update(view(p[2], clamp(Number(p[3]) + Number(p[5])), p[4], p[6] || ''));
     }
     if (p[1] === 's') {
       const reqPiles = Number(p[4]) || 0;
@@ -139,13 +197,34 @@ module.exports = {
         .setMaxLength(7);
       if (reqPiles > 0) pilesInput.setValue(String(reqPiles));
       const modal = new ModalBuilder()
-        .setCustomId(`spawner:m:${p[2]}`)
+        .setCustomId(`spawner:m:${p[2]}:${p[5] || ''}`)
         .setTitle('Set spawners and piles')
         .addComponents(
           new ActionRowBuilder().addComponents(countInput),
           new ActionRowBuilder().addComponents(pilesInput),
         );
       return interaction.showModal(modal);
+    }
+    if (p[1] === 'p') {
+      const type = SPAWNERS[p[2]] ? p[2] : 'skeleton';
+      const prices = pricesFrom(p[5] || '');
+      const modal = new ModalBuilder()
+        .setCustomId(`spawner:pm:${type}:${p[3]}:${p[4]}:${p[5] || ''}`)
+        .setTitle('Set item prices');
+      for (const d of SPAWNERS[type].drops) {
+        const input = new TextInputBuilder()
+          .setCustomId(d.key)
+          .setLabel(`${d.name} price`)
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false)
+          .setMaxLength(12);
+        if (prices[d.key]) input.setValue(String(prices[d.key]));
+        modal.addComponents(new ActionRowBuilder().addComponents(input));
+      }
+      return interaction.showModal(modal);
+    }
+    if (p[1] === 'c') {
+      return interaction.update(view(p[2], p[3], p[4], ''));
     }
     return undefined;
   },
@@ -154,7 +233,7 @@ module.exports = {
   async selectMenu(interaction) {
     const p = interaction.customId.split(':');
     if (p[1] === 't') {
-      return interaction.update(view(interaction.values[0], Number(p[2]), p[3]));
+      return interaction.update(view(interaction.values[0], Number(p[2]), p[3], p[4] || ''));
     }
     return undefined;
   },
@@ -162,8 +241,21 @@ module.exports = {
   // Modal: spawner:m:<type> — count (required) + piles (blank = auto-split).
   async modal(interaction) {
     const p = interaction.customId.split(':');
+    if (p[1] === 'pm') {
+      const type = SPAWNERS[p[2]] ? p[2] : 'skeleton';
+      const prices = { ...pricesFrom(p[5] || '') };
+      for (const d of SPAWNERS[type].drops) {
+        const parsed = parsePrice(interaction.fields.getTextInputValue(d.key));
+        if (parsed > 0) prices[d.key] = parsed;
+        else delete prices[d.key];
+      }
+      return interaction.update(view(type, p[3], p[4], storePrices(prices)));
+    }
     const count = clamp(interaction.fields.getTextInputValue('count').replace(/[^0-9]/g, ''));
     const piles = interaction.fields.getTextInputValue('piles').replace(/[^0-9]/g, '');
-    return interaction.update(view(p[2], count, piles || 0));
+    return interaction.update(view(p[2], count, piles || 0, p[3] || ''));
   },
+
+  view,
+  parsePrice,
 };

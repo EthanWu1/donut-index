@@ -1,5 +1,6 @@
 const api = require('./../lib/api');
 const config = require('./../config');
+const db = require('./../lib/db');
 
 // DonutSMP auction listing shape (verified):
 // { seller: { name }, price, time_left, item: { id, count, display_name } }
@@ -25,6 +26,68 @@ function itemKey(item) {
   return String((item && item.id) || '').replace(/^minecraft:/i, '').toLowerCase();
 }
 
+function titleCase(raw) {
+  return String(raw || '')
+    .replace(/^minecraft:/i, '')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function roman(n) {
+  const value = Math.max(1, Math.min(20, Number(n) || 1));
+  const numerals = [
+    [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
+  ];
+  let x = value;
+  let out = '';
+  for (const [v, s] of numerals) {
+    while (x >= v) { out += s; x -= v; }
+  }
+  return out;
+}
+
+function normalizeEnchantId(v) {
+  return String(v || '')
+    .replace(/^minecraft:/i, '')
+    .trim()
+    .toLowerCase();
+}
+
+function readEnchantments(item) {
+  const out = [];
+  const push = (id, level) => {
+    const clean = normalizeEnchantId(id);
+    if (!clean) return;
+    const lvl = Number(level ?? 1) || 1;
+    out.push({ id: clean, name: titleCase(clean), level: lvl });
+  };
+
+  for (const key of ['enchantments', 'enchants', 'stored_enchantments']) {
+    const value = item && item[key];
+    if (Array.isArray(value)) {
+      for (const e of value) {
+        if (typeof e === 'string') push(e, 1);
+        else if (e && typeof e === 'object') push(e.id || e.name || e.key || e.type, e.level || e.lvl);
+      }
+    } else if (value && typeof value === 'object') {
+      for (const [id, level] of Object.entries(value)) push(id, level);
+    }
+  }
+
+  const seen = new Set();
+  return out.filter((e) => {
+    const key = `${e.id}:${e.level}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function enchantText(enchantments) {
+  return (enchantments || []).map((e) => `${e.name} ${roman(e.level)}`).join(', ');
+}
+
 function normalizeListing(it) {
   const item = it.item || {};
   const dn = typeof item.display_name === 'string'
@@ -33,13 +96,19 @@ function normalizeListing(it) {
   const amount = Number(item.count ?? it.count ?? it.amount ?? 1) || 1;
   const price = Number(it.price ?? it.cost ?? 0) || 0;
   const seller = (it.seller && it.seller.name) || readName(it.seller) || 'unknown';
+  const enchantments = readEnchantments(item);
+  const enchants = enchantText(enchantments);
   return {
     name: prettyName(rawName),
     key: itemKey(item),
     amount,
     price,
+    stackPrice: amount > 0 ? Math.ceil((price / amount) * 64) : price,
     timeLeft: Number(it.time_left) || 0,
     seller: String(seller),
+    enchantments,
+    enchantText: enchants,
+    searchText: `${prettyName(rawName)} ${itemKey(item)} ${enchants}`.toLowerCase(),
   };
 }
 
@@ -63,9 +132,10 @@ let updatedAt = 0;
 let building = false;
 let listingsError = null;
 let transactionsError = null;
+let stale = false;
 
 function getAuctionIndex() {
-  return { listings, transactions, updatedAt, building, listingsError, transactionsError };
+  return { listings, transactions, updatedAt, building, listingsError, transactionsError, stale };
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -133,6 +203,19 @@ async function rebuild() {
     if (!listingsError) {
       listings = live;
       updatedAt = Date.now();
+      stale = false;
+      db.saveAuctionCache({ listings, transactions, updatedAt });
+      db.recordAuctionPriceSnapshot(listings, updatedAt);
+      db.compactAuctionHistory(Date.now(), config.ahHistoryRawRetentionMs);
+      db.clearExpiredAuctionCache(config.ahFallbackMs);
+    } else {
+      const fallback = db.getAuctionCache(config.ahFallbackMs);
+      if (fallback) {
+        listings = fallback.listings;
+        if (fallback.transactions.length) transactions = fallback.transactions;
+        updatedAt = fallback.updatedAt;
+        stale = true;
+      }
     }
     console.log(`[auction] indexed ${listings.length} listings, ${transactions.length} recent sales`);
   } finally {
@@ -145,4 +228,6 @@ function startAuctionJob() {
   setInterval(() => rebuild().catch((e) => console.error('[auction]', e)), config.ahRefreshMs);
 }
 
-module.exports = { startAuctionJob, getAuctionIndex, rebuild };
+module.exports = {
+  startAuctionJob, getAuctionIndex, rebuild, normalizeListing, normalizeTxn, extractList, enchantText,
+};
