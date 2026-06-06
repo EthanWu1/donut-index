@@ -22,6 +22,16 @@ test('/render message includes material list and estimated cost buttons', () => 
   assert.ok(buttons.includes('Estimated Cost'));
 });
 
+test('/render attachment filenames preserve schematic spaces', () => {
+  const payload = render.buildMessage({
+    png: Buffer.from([1, 2, 3]),
+    meta: { name: 'Mega Kelp Farm', blockCount: 1, size: { x: 1, y: 1, z: 1 } },
+    token: 'abc',
+  });
+
+  assert.equal(payload.files[0].name, 'Mega Kelp Farm-render.png');
+});
+
 test('material list shows every material with icons and omits singular stack text', () => {
   const payload = render.materialListPayload([
     ...materials,

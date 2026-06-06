@@ -58,8 +58,9 @@ function schematicVolume(size) {
 function safeName(name) {
   const base = String(name || 'render')
     .replace(/\.litematic$/i, '')
-    .replace(/[^a-zA-Z0-9_-]+/g, '_')
-    .replace(/^_+|_+$/g, '')
+    .replace(/[\\/:*?"<>|\x00-\x1f]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
     .slice(0, 80);
   return `${base || 'render'}-render.png`;
 }
@@ -139,7 +140,7 @@ function buildMessage({
       { name: 'Blocks', value: `\`${formatCount(meta.blockCount)} / ${formatCount(schematicVolume(size))}\``, inline: true },
       { name: 'Size', value: `\`${formatCount(size.x)} x ${formatCount(size.y)} x ${formatCount(size.z)}\``, inline: true },
     )
-    .setImage(`attachment://${attachment.name}`)
+    .setImage(`attachment://${encodeURIComponent(attachment.name)}`)
     .setFooter({ text: `Rotation ${normalizeRotation(rotation)} deg` });
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`render:rot:${token}:l`).setLabel('←').setStyle(ButtonStyle.Secondary),

@@ -3,13 +3,14 @@ const path = require('node:path');
 const {
   SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
   StringSelectMenuBuilder, EmbedBuilder, AttachmentBuilder, MessageFlags,
-  ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits,
 } = require('discord.js');
 const config = require('../config');
 const db = require('../lib/db');
 const { getSchematicIndex } = require('../jobs/schematics');
 const { errorEmbed } = require('../lib/embeds');
+const { renderLitematic } = require('../lib/renderClient');
 const { deliverHoloprint } = require('./holoprint');
+const { materialListPayload } = require('./render');
 
 // Strips the extension and filesystem-unsafe characters from a staff-typed
 // schematic filename, keeping spaces and wording.
@@ -156,10 +157,15 @@ function buildDetailView(threadId, tag, page) {
     }
   }
 
+  const row = buildDetailActionRow(s, tag, page, guildId);
+  return { embeds: [embed], components: [row], files, attachments: [] };
+}
+
+function buildDetailActionRow(s, tag, page, guildId) {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`schematics:dl:${s.threadId}`).setLabel('Download').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`schematics:holo:${s.threadId}`).setLabel('HoloPrint').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`schematics:rename:${s.threadId}:${tag}:${page}`).setLabel('Rename File').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`schematics:mat:${s.threadId}`).setLabel('Material List').setStyle(ButtonStyle.Secondary),
   );
   if (guildId) {
     row.addComponents(
@@ -170,7 +176,34 @@ function buildDetailView(threadId, tag, page) {
   row.addComponents(
     new ButtonBuilder().setCustomId(`schematics:page:${tag}:${page}`).setLabel('Back').setStyle(ButtonStyle.Secondary),
   );
-  return { embeds: [embed], components: [row], files, attachments: [] };
+  return row;
+}
+
+function attachmentDownloadCandidates(att) {
+  return [
+    att?.url,
+    att?.proxyURL,
+    att?.proxyUrl,
+    att?.proxy_url,
+  ].filter(Boolean).filter((url, idx, arr) => arr.indexOf(url) === idx);
+}
+
+async function downloadAttachmentBuffer(att) {
+  const urls = attachmentDownloadCandidates(att);
+  let lastError = null;
+  for (const url of urls) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        lastError = new Error(`HTTP ${res.status}`);
+        continue;
+      }
+      return Buffer.from(await res.arrayBuffer());
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw new Error(`Download failed: ${lastError?.message || 'no URL available'}`);
 }
 
 // Re-fetches the .litematic from the live forum post (the indexed CDN url may
@@ -182,9 +215,7 @@ async function fetchSchematicFile(client, threadId) {
   const att = starter
     && [...starter.attachments.values()].find((a) => /\.litematic$/i.test(a.name || ''));
   if (!att) throw new Error('No `.litematic` file found on that post.');
-  const res = await fetch(att.url);
-  if (!res.ok) throw new Error(`Download failed: HTTP ${res.status}`);
-  return { buffer: Buffer.from(await res.arrayBuffer()), name: att.name };
+  return { buffer: await downloadAttachmentBuffer(att), name: att.name };
 }
 
 module.exports = {
@@ -221,7 +252,7 @@ module.exports = {
     return interaction.reply(buildListView('all', 1));
   },
 
-  // Buttons: schematics:page:<tag>:<page> | schematics:dl:<threadId>
+  // Buttons: schematics:page:<tag>:<page> | schematics:dl:<threadId> | schematics:holo:<threadId> | schematics:mat:<threadId>
   async button(interaction) {
     const parts = interaction.customId.split(':');
     if (parts[1] === 'page') {
@@ -249,49 +280,23 @@ module.exports = {
         return interaction.editReply({ embeds: [errorEmbed(err.message)] });
       }
     }
-    if (parts[1] === 'rename') {
-      // Renames the file the bot serves (not the forum post). Staff only.
-      if (!interaction.memberPermissions
-        || !interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)) {
-        return interaction.reply({
-          embeds: [errorEmbed('You need the **Manage Server** permission to rename schematic files.')],
-          flags: MessageFlags.Ephemeral,
+    if (parts[1] === 'mat') {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      try {
+        const { buffer } = await fetchSchematicFile(interaction.client, parts[2]);
+        const { meta } = await renderLitematic(buffer, {
+          width: 256,
+          height: 256,
+          transparentBackground: true,
         });
+        const payload = materialListPayload(meta?.materials || []);
+        delete payload.flags;
+        return interaction.editReply(payload);
+      } catch (err) {
+        return interaction.editReply({ embeds: [errorEmbed(err.message)] });
       }
-      const [, , threadId, tag, page] = parts;
-      const { schematics } = getSchematicIndex();
-      const s = schematics.find((x) => x.threadId === threadId);
-      const input = new TextInputBuilder()
-        .setCustomId('name')
-        .setLabel('File name (without .litematic)')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true)
-        .setMaxLength(80)
-        .setValue(s ? effectiveBaseName(s).slice(0, 80) : '');
-      const modal = new ModalBuilder()
-        .setCustomId(`schematics:rmodal:${threadId}:${tag}:${page}`)
-        .setTitle('Rename schematic file')
-        .addComponents(new ActionRowBuilder().addComponents(input));
-      return interaction.showModal(modal);
     }
     return undefined;
-  },
-
-  // Modal: schematics:rmodal:<threadId>:<tag>:<page> — saves the file override.
-  async modal(interaction) {
-    const parts = interaction.customId.split(':');
-    if (parts[1] !== 'rmodal') return undefined;
-    const [, , threadId, tag, page] = parts;
-    const name = cleanFileName(interaction.fields.getTextInputValue('name'));
-    if (!name) {
-      return interaction.reply({
-        embeds: [errorEmbed('That name is empty once invalid characters are removed.')],
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-    db.setSchematicName(threadId, name);
-    await interaction.deferUpdate();
-    return interaction.editReply(buildDetailView(threadId, tag, Number(page) || 1));
   },
 
   // Select menus: schematics:tag | schematics:pick:<tag>:<page>
@@ -306,5 +311,12 @@ module.exports = {
       return interaction.editReply(buildDetailView(interaction.values[0], parts[2], Number(parts[3]) || 1));
     }
     return undefined;
+  },
+
+  _test: {
+    attachmentDownloadCandidates,
+    buildDetailActionRow,
+    cleanFileName,
+    fetchSchematicFile,
   },
 };
